@@ -14,9 +14,8 @@ struct ChronicleView: View {
     @State private var error: String?
     @State private var cutin: String?
     @State private var confirmingReset = false
-    @AppStorage("chronicle.introduction.v3") private var introductionComplete = false
+    @AppStorage("chronicle.introduction.v4") private var introductionComplete = false
     @State private var showingTree = false
-    @State private var inspectedNode: Node?
     @State private var impact = false
 
     init() {
@@ -32,9 +31,10 @@ struct ChronicleView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         header
                         if !introductionComplete { introduction(catalog) }
+                        else if let progress = game.trial, progress.stage != .combat { trialScene(progress, catalog: catalog) }
                         else if game.phase == .notebook { notebook(catalog) }
                         else { battle(catalog) }
-                        if introductionComplete && game.phase != .notebook {
+                        if introductionComplete && game.phase != .notebook && game.trial?.stage != .reward {
                         Text(game.log).font(.footnote).lineSpacing(4).padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(crimson.opacity(0.1))
@@ -47,7 +47,7 @@ struct ChronicleView: View {
             if let cutin {
                 ZStack {
                     Color.black.ignoresSafeArea()
-                    Text("断").font(.system(size: 250, weight: .black, design: .serif))
+                    Text(cutin.contains("眼") ? "視" : cutin.contains("詠") || cutin.contains("真名") ? "言" : "龍").font(.system(size: 250, weight: .black, design: .serif))
                         .foregroundStyle(crimson.opacity(0.3))
                     VStack(spacing: 30) {
                         Text("——書いた通りに").font(.title3)
@@ -77,12 +77,14 @@ struct ChronicleView: View {
         }
     }
 
-    private var isPaper: Bool { introductionComplete && game.phase == .notebook }
+    private var isPaper: Bool {
+        introductionComplete && game.phase == .notebook && game.trial == nil
+    }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("第\(game.day)頁 ／ \(game.phase == .notebook ? "記述" : "現実")")
+                Text("第\(game.day)頁 ／ \(isPaper ? "記述" : "現実")")
                 Spacer()
                 Button("書き直す") { confirmingReset = true }.font(.caption)
             }.font(.caption.monospaced()).foregroundStyle(crimson)
@@ -92,7 +94,7 @@ struct ChronicleView: View {
     }
 
     private func introduction(_ catalog: Catalog) -> some View {
-        AwakeningIntroduction(crimson: crimson, onUnlock: {
+        AwakeningIntroduction(catalog: catalog, crimson: crimson, onUnlock: {
             game.completeIntroduction()
         }, onContinue: {
             introductionComplete = true
@@ -105,120 +107,103 @@ struct ChronicleView: View {
         }.buttonStyle(.borderedProminent).tint(crimson)
     }
 
-    private func heroEmblem(awakened: Bool) -> some View {
-        ZStack {
-            Circle().fill(crimson.opacity(0.12)).frame(width: 145, height: 145)
-            Image(systemName: awakened ? "flame.fill" : "person.fill")
-                .font(.system(size: 78, weight: .black)).foregroundStyle(crimson)
-            if game.selected.contains("eye2") {
-                Image(systemName: "eye.fill").font(.system(size: 30)).offset(x: 48, y: -35)
-            }
-            if game.selected.contains("arm3") {
-                Image(systemName: "bolt.fill").font(.system(size: 55)).offset(x: -48, y: 5)
-            }
-        }.accessibilityLabel(awakened ? "封印を解放した姿" : "封印された姿")
-    }
-
     private var monster: MonsterView { MonsterView(crimson: crimson) }
 
     private func notebook(_ catalog: Catalog) -> some View {
-        VStack(spacing: 18) {
-            heroEmblem(awakened: game.selected.contains("arm2"))
-            Text(game.activeResonances(catalog).first?.name ??
-                 (game.selected.contains("arm3") ? "黒龍を宿す者" : "封印を解いた右腕"))
-                .font(.title2.bold()).fontDesign(.serif)
-            HStack {
-                Text("技威力 \(game.damage(catalog))").bold()
-                Spacer()
-                Text("記述点 \(game.ink)").font(.callout)
+        VStack(spacing: 20) {
+            Text("力は、まだ始まったばかりだ。").font(.title2.bold()).fontDesign(.serif)
+            Text("次の頁は、新しい力を要求している。").font(.footnote)
+            let available = catalog.trials.filter { game.canBegin($0) }
+            ForEach(available) { story in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(story.place).font(.caption).foregroundStyle(crimson)
+                    Text(story.title).font(.title3.bold()).fontDesign(.serif)
+                    Text("獲得する力：\(rewardName(story, catalog: catalog))")
+                        .font(.footnote.bold())
+                    Button("この兆候を追う") { game.beginTrial(story) }
+                        .buttonStyle(.borderedProminent).tint(crimson)
+                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
             }
-            primaryButton("この力を、試す") {
-                game.manifest()
-                showCutin("設定、現実化。")
-            }.disabled(game.selected.isEmpty)
-            Text("次は、何を宿す？").font(.title2.bold()).fontDesign(.serif)
-            let routes = game.unlocked.contains("arm3") || game.unlocked.contains("eye2")
-                ? ["右腕", "魔眼", "詠唱"] : ["右腕", "魔眼"]
-            let next = routes.compactMap { route in
-                catalog.nodes.first { $0.route == route && !game.unlocked.contains($0.id) }
+            if available.isEmpty {
+                Text("すべての系譜が、あなたの力になった。").font(.headline)
             }
-            ForEach(next) { node in
-                evolutionCard(node, catalog: catalog)
-            }
-            Button(showingTree ? "系譜を閉じる" : "すべての系譜を見る") {
-                withAnimation { showingTree.toggle() }
-            }.font(.footnote).tint(crimson)
+            Text("あなたの系譜").font(.title2.bold()).fontDesign(.serif)
+            SkillConstellation(catalog: catalog, learned: game.unlocked, highlighted: [], crimson: crimson)
+                .frame(height: 430).background(Color.black, in: RoundedRectangle(cornerRadius: 18))
+            Button(showingTree ? "設定を閉じる" : "習得済みの設定を組み替える") { showingTree.toggle() }
+                .font(.footnote).tint(crimson)
             if showingTree {
-                ForEach(["右腕", "魔眼", "詠唱"], id: \.self) { route in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("\(route)ノ系譜").font(.title3.bold()).fontDesign(.serif)
-                        ForEach(catalog.nodes.filter { $0.route == route }) { node in nodeRow(node) }
-                    }
+                ForEach(catalog.nodes.filter { game.unlocked.contains($0.id) }) { node in
+                    Button {
+                        game.toggle(node)
+                    } label: {
+                        HStack {
+                            Text(game.selected.contains(node.id) ? "◆" : "◇")
+                            Text(node.name)
+                        }
+                    }.buttonStyle(.bordered).tint(crimson)
                 }
             }
+            Button("現在の力を試す ／ 威力 \(game.damage(catalog))") {
+                game.manifest()
+            }.buttonStyle(.bordered).tint(crimson).disabled(game.selected.isEmpty)
         }
     }
 
-    private func evolutionCard(_ node: Node, catalog: Catalog) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: node.route == "右腕" ? "flame.fill" : node.route == "魔眼" ? "eye.fill" : "waveform")
-                    .font(.title).foregroundStyle(crimson)
-                Text(node.id == "arm3" ? "この腕に、黒龍を宿す" : node.id == "eye1" ? "隠した右目を開く" : node.name)
-                    .font(.headline).fontDesign(.serif)
-                Spacer()
-                Button { inspectedNode = inspectedNode?.id == node.id ? nil : node } label: {
-                    Image(systemName: "info.circle")
-                }.accessibilityLabel("\(node.name)の詳細")
-            }
-            // Opening the eye evolves through its root in one purchase, rather than
-            // making the player read and buy two prerequisite descriptions.
-            let bundle = node.id == "eye1"
-                ? catalog.nodes.filter { ["eye1", "eye2"].contains($0.id) && !game.unlocked.contains($0.id) }
-                : [node]
-            let cost = bundle.reduce(0) { $0 + $1.cost }
-            if inspectedNode?.id == node.id { Text(node.detail).font(.footnote) }
-            Button("解放する ／ \(cost)点") {
-                for item in bundle { game.unlock(item) }
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                showCutin(bundle.last?.name ?? node.name)
-            }.buttonStyle(.bordered).tint(crimson)
-                .disabled(game.ink < cost || !Set(node.requires).isSubset(of: game.unlocked))
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    private func rewardName(_ story: Trial, catalog: Catalog) -> String {
+        story.rewards.compactMap { id in catalog.nodes.first { $0.id == id }?.name }.last ?? "新しい力"
     }
 
-    private func nodeRow(_ node: Node) -> some View {
-        let unlocked = game.unlocked.contains(node.id)
-        let selected = game.selected.contains(node.id)
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text("\(selected ? "◆" : "◇") \(node.name)").bold()
-                Spacer()
-                Text("★\(node.stars)").font(.caption)
+    private func trialScene(_ progress: TrialProgress, catalog: Catalog) -> some View {
+        let story = progress.story
+        return VStack(spacing: 20) {
+            Text(story.place).font(.caption).foregroundStyle(crimson)
+            Text(progress.stage == .reward ? "新たな系譜、解放。" : story.title)
+                .font(.title2.bold()).fontDesign(.serif).multilineTextAlignment(.center)
+            if progress.stage == .reward {
+                SkillConstellation(catalog: catalog, learned: game.unlocked,
+                                   highlighted: Set(story.rewards), crimson: crimson)
+                    .frame(height: 430).background(Color.black, in: RoundedRectangle(cornerRadius: 18))
+                Text("《\(rewardName(story, catalog: catalog))》習得").font(.title3.bold())
+                Text(story.victory).font(.footnote).multilineTextAlignment(.center)
+                if let resonance = game.activeResonances(catalog).first(where: {
+                    !Set($0.requires).isDisjoint(with: story.rewards)
+                }) {
+                    Text("設定が共鳴した——《\(resonance.name)》 ×\(resonance.multiplier, specifier: "%.1f")")
+                        .font(.footnote.bold()).foregroundStyle(crimson)
+                }
+                primaryButton("さらに先の頁へ") { game.returnToNotebook() }
+            } else {
+                monster.frame(height: 190)
+                    .scaleEffect(progress.stage == .crisis ? 1.15 : 1)
+                if progress.stage == .crisis {
+                    Text("今の能力では、届かない。").font(.caption.bold()).foregroundStyle(crimson)
+                }
+                Text(progress.stage == .approach ? story.opening : story.crisis)
+                    .font(.body).multilineTextAlignment(.center).lineSpacing(5)
+                if progress.stage == .approach {
+                    primaryButton("今の力を、ぶつける") {
+                        game.confrontTrial()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    }
+                } else {
+                    Text("ノートに、次の一行を。").font(.caption).foregroundStyle(crimson)
+                    primaryButton(story.vow) {
+                        game.awakenTrial()
+                        showCutin(rewardName(story, catalog: catalog))
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    }
+                }
+                Button("一度、ノートに戻る") { game.abandonTrial() }.font(.caption).tint(crimson)
             }
-            Button("設定を読む") { inspectedNode = inspectedNode?.id == node.id ? nil : node }
-                .font(.caption)
-            if inspectedNode?.id == node.id { Text(node.detail).font(.footnote) }
-            if !node.requires.isEmpty {
-                Text("前提：\(node.requires.compactMap { id in catalog?.nodes.first { $0.id == id }?.name }.joined(separator: "、"))")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Button(unlocked ? (selected ? "この頁から外す" : "この頁に刻む") : "解放 ／ \(node.cost)点") {
-                if unlocked { game.toggle(node) }
-                else { game.unlock(node) }
-            }
-            .buttonStyle(.bordered).tint(crimson)
-            .disabled(!unlocked && !game.canUnlock(node))
-        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? crimson.opacity(0.09) : Color.white.opacity(0.3))
-            .overlay(alignment: .leading) { Rectangle().fill(selected ? crimson : .gray.opacity(0.3)).frame(width: 3) }
+        }.frame(maxWidth: .infinity)
     }
 
     private func battle(_ catalog: Catalog) -> some View {
         VStack(spacing: 18) {
             HStack {
-                Text("名を失った残響").font(.headline)
+                Text(game.trial?.story.enemy ?? "名を失った残響").font(.headline)
                 Spacer()
                 Text("\(game.enemyHP) / \(game.enemyMaximum)").monospacedDigit()
             }
@@ -247,7 +232,7 @@ struct ChronicleView: View {
         Button {
             if action == "skill", game.charges > 0 {
                 UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                showCutin(game.activeResonances(catalog).first?.name ?? "漆黒拳")
+                showCutin(game.trial.map { rewardName($0.story, catalog: catalog) } ?? game.activeResonances(catalog).first?.name ?? "漆黒拳")
             }
             game.act(action, catalog: catalog)
             withAnimation(.spring(response: 0.15, dampingFraction: 0.2)) { impact = true }
@@ -307,13 +292,13 @@ private struct MonsterView: View {
 
 private struct AwakeningIntroduction: View {
     enum Beat: Int { case encounter, pressure, notebook, awakening, ready, impact, unlock }
+    let catalog: Catalog
     let crimson: Color
     let onUnlock: () -> Void
     let onContinue: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var beat = Beat.encounter
     @State private var approaching = false
-    @State private var inscribed = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -349,7 +334,7 @@ private struct AwakeningIntroduction: View {
                             .foregroundStyle(crimson).shadow(color: crimson, radius: 20)
                     }
                 }
-            }.frame(height: 280).clipped()
+            }.frame(height: beat == .unlock ? 440 : 280).clipped()
             Text(line).font(.body).multilineTextAlignment(.center).frame(minHeight: 50)
             if beat == .encounter {
                 action("殴る") { beat = .pressure }
@@ -386,7 +371,6 @@ private struct AwakeningIntroduction: View {
                     beat = .unlock
                 case .unlock:
                     onUnlock()
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 1.4)) { inscribed = true }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 default: break
                 }
@@ -402,7 +386,7 @@ private struct AwakeningIntroduction: View {
         case .awakening: return "——右腕が、灼ける。"
         case .ready: return "本当に、宿った。"
         case .impact: return "……やれやれ。"
-        case .unlock: return "最初の系譜、解放。"
+        case .unlock: return "最初の能力を、手に入れた。"
         }
     }
 
@@ -414,7 +398,7 @@ private struct AwakeningIntroduction: View {
         case .awakening: return "包帯の下を、黒い紋章が走る。"
         case .ready: return "（……ずっと、待ってた）"
         case .impact: return "闇に還れ。"
-        case .unlock: return "書いただけの設定が、消えない力になった。"
+        case .unlock: return "この一撃は、始まりに過ぎない。\nノートの奥には、まだ幾つもの力が眠っている。"
         }
     }
 
@@ -444,31 +428,90 @@ private struct AwakeningIntroduction: View {
     }
 
     private var firstBranch: some View {
-        VStack(spacing: 0) {
-            Text("右腕ノ系譜").font(.caption).foregroundStyle(.white.opacity(0.6))
-            Circle().fill(.white.opacity(0.5)).frame(width: 12, height: 12).padding(.top, 16)
-            Path { path in
-                path.move(to: CGPoint(x: 60, y: 0))
-                path.addLine(to: CGPoint(x: 60, y: 45))
-            }.trim(from: 0, to: inscribed ? 1 : 0)
-                .stroke(crimson, lineWidth: 3).frame(width: 120, height: 45)
-            ZStack {
-                Circle().stroke(crimson, lineWidth: 2).frame(width: 80, height: 80)
-                Circle().fill(crimson.opacity(inscribed ? 0.4 : 0)).frame(width: 70, height: 70)
-                Image(systemName: "flame.fill").font(.system(size: 35)).foregroundStyle(crimson)
-            }.scaleEffect(inscribed ? 1 : 0.6)
-            Text("第一拘束解除").font(.title2.bold()).fontDesign(.serif).foregroundStyle(.white).padding(.top, 12)
-            Text("漆黒拳、習得").font(.caption.bold()).foregroundStyle(crimson).padding(.top, 6)
-            HStack(spacing: 30) {
-                Image(systemName: "lock.fill")
-                Image(systemName: "lock.fill")
-            }.font(.caption).foregroundStyle(.white.opacity(0.25)).padding(.top, 18)
-        }.accessibilityLabel("右腕の系譜に第一拘束解除が刻まれた。漆黒拳を習得")
+        SkillConstellation(catalog: catalog, learned: ["arm2"], highlighted: ["arm2"], crimson: crimson)
     }
 
     private func action(_ title: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Text(title).font(.headline).padding(.vertical, 16).frame(maxWidth: .infinity)
         }.buttonStyle(.borderedProminent).tint(crimson)
+    }
+}
+
+
+/// The complete playable horizon: one first ability and three evolving branches.
+private struct SkillConstellation: View {
+    let catalog: Catalog
+    let learned: Set<String>
+    let highlighted: Set<String>
+    let crimson: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var revealed = false
+    private let rows = [["arm2"], ["arm3", "eye2", "chant2"],
+                        ["arm4", "eye3", "chant3"], ["arm5", "eye4", "chant4"]]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            let total = rows.flatMap { $0 }
+            Text("習得 \(total.filter { learned.contains($0) }.count) / \(total.count)")
+                .font(.caption.monospaced().bold()).foregroundStyle(crimson).padding(.top, 14)
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                ZStack {
+                    ForEach(1..<4) { row in
+                        ForEach(0..<3) { column in
+                            let id = rows[row][column]
+                            let start = point(row: row - 1, column: row == 1 ? 0 : column, width: width)
+                            let end = point(row: row, column: column, width: width)
+                            Path { path in
+                                path.move(to: start)
+                                path.addLine(to: CGPoint(x: start.x, y: (start.y + end.y) / 2))
+                                path.addLine(to: CGPoint(x: end.x, y: (start.y + end.y) / 2))
+                                path.addLine(to: end)
+                            }.trim(from: 0, to: revealed ? 1 : 0)
+                                .stroke(learned.contains(id) ? crimson : Color.white.opacity(0.23),
+                                        style: StrokeStyle(lineWidth: learned.contains(id) ? 2.5 : 1, dash: learned.contains(id) ? [] : [3, 4]))
+                        }
+                    }
+                    ForEach(0..<4) { row in
+                        ForEach(Array(rows[row].enumerated()), id: \.element) { column, id in
+                            let active = learned.contains(id)
+                            let newly = highlighted.contains(id)
+                            VStack(spacing: 5) {
+                                ZStack {
+                                    Circle().fill(active ? crimson.opacity(0.22) : Color.black)
+                                    Circle().stroke(active ? crimson : Color.white.opacity(0.3), lineWidth: newly ? 3 : 1)
+                                    Image(systemName: active ? (id.hasPrefix("arm") ? "flame.fill" : id.hasPrefix("eye") ? "eye.fill" : "waveform") : "lock.fill")
+                                        .font(.system(size: newly ? 22 : 15)).foregroundStyle(active ? crimson : .gray)
+                                }.frame(width: newly ? 52 : 38, height: newly ? 52 : 38)
+                                    .shadow(color: newly ? crimson.opacity(0.7) : .clear, radius: revealed ? 16 : 0)
+                                Text(id == "arm2" ? "漆黒拳・第一拘束解除" : catalog.nodes.first { $0.id == id }?.name ?? id)
+                                    .font(.system(size: 10, weight: active ? .bold : .regular))
+                                    .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
+                                    .multilineTextAlignment(.center).frame(width: width / 3 - 5)
+                                if newly { Text("習得").font(.system(size: 9, weight: .bold)).foregroundStyle(crimson) }
+                            }.position(point(row: row, column: column, width: width))
+                                .opacity(row == 0 || revealed ? 1 : 0)
+                        }
+                    }
+                }
+                .scaleEffect(revealed || reduceMotion ? 1 : 1.7, anchor: .top)
+            }.padding(.horizontal, 8)
+            Text("右腕  ／  魔眼  ／  詠唱").font(.caption).foregroundStyle(.white.opacity(0.6)).padding(.bottom, 14)
+        }
+        .task {
+            if reduceMotion { revealed = true; return }
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+                withAnimation(.easeInOut(duration: 1.8)) { revealed = true }
+            } catch { }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("全10能力の系譜。光る点は習得済み、鍵は未習得。右腕、魔眼、詠唱へ枝分かれしている")
+    }
+
+    private func point(row: Int, column: Int, width: CGFloat) -> CGPoint {
+        CGPoint(x: row == 0 ? width / 2 : width * CGFloat(column * 2 + 1) / 6,
+                y: 48 + CGFloat(row) * 90)
     }
 }

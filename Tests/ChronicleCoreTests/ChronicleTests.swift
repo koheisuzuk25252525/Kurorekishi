@@ -2,6 +2,90 @@ import XCTest
 @testable import ChronicleCore
 
 final class ChronicleTests: XCTestCase {
+    func testAllStoryTrialsReachTheirRewardAndCannotRepeat() throws {
+        let catalog = try Catalog.load()
+        var game = Game()
+        game.completeIntroduction()
+        for story in catalog.trials {
+            XCTAssertTrue(game.canBegin(story), story.id)
+            game.beginTrial(story)
+            XCTAssertEqual(game.trial?.stage, .approach)
+            game.awakenTrial() // No skipping the crisis.
+            XCTAssertEqual(game.phase, .notebook)
+            game.confrontTrial()
+            game.awakenTrial()
+            XCTAssertEqual(game.phase, .battle)
+            XCTAssertFalse(Set(story.rewards).isSubset(of: game.unlocked))
+            for _ in 0..<3 { game.act("skill", catalog: catalog) }
+            XCTAssertEqual(game.phase, .victory, story.id)
+            XCTAssertEqual(game.trial?.stage, .reward)
+            XCTAssertTrue(Set(story.rewards).isSubset(of: game.unlocked))
+            let won = game
+            game.act("skill", catalog: catalog)
+            XCTAssertEqual(game, won)
+            game.returnToNotebook()
+            XCTAssertFalse(game.canBegin(story))
+        }
+        XCTAssertEqual(game.unlocked.count, catalog.nodes.count)
+    }
+
+    func testEachBranchIsPlayableWithoutOtherBranches() throws {
+        let catalog = try Catalog.load()
+        for route in ["右腕", "魔眼", "詠唱"] {
+            var game = Game()
+            game.completeIntroduction()
+            let branch = catalog.trials.filter { story in
+                catalog.nodes.first { $0.id == story.rewards.last }?.route == route
+            }
+            for story in branch {
+                XCTAssertTrue(game.canBegin(story))
+                game.beginTrial(story)
+                game.confrontTrial()
+                game.awakenTrial()
+                for _ in 0..<3 { game.act("skill", catalog: catalog) }
+                XCTAssertEqual(game.phase, .victory, story.id)
+                game.returnToNotebook()
+            }
+        }
+    }
+
+    func testDefeatDoesNotGrantTrialPowerAndAllowsRetry() throws {
+        let catalog = try Catalog.load()
+        var game = Game()
+        game.completeIntroduction()
+        let previous = game.selected
+        let story = catalog.trials[0]
+        game.beginTrial(story)
+        game.confrontTrial()
+        game.awakenTrial()
+        for _ in 0..<8 { game.act("focus", catalog: catalog) }
+        XCTAssertEqual(game.phase, .defeat)
+        XCTAssertFalse(game.unlocked.contains("arm3"))
+        game.returnToNotebook()
+        XCTAssertEqual(game.selected, previous)
+        XCTAssertNil(game.trial)
+        XCTAssertTrue(game.canBegin(story))
+    }
+
+    func testTrialSaveResumesAndOldSaveWithoutTrialStillDecodes() throws {
+        let catalog = try Catalog.load()
+        var game = Game()
+        game.completeIntroduction()
+        XCTAssertFalse(game.canBegin(catalog.trials.first { $0.id == "lastarm" }!))
+        game.beginTrial(catalog.trials[0])
+        game.confrontTrial()
+        let data = try JSONEncoder().encode(game)
+        var restored = try JSONDecoder().decode(Game.self, from: data)
+        XCTAssertEqual(restored, game)
+        restored.awakenTrial()
+        XCTAssertEqual(restored.phase, .battle)
+        let combatSave = try JSONEncoder().encode(restored)
+        XCTAssertEqual(try JSONDecoder().decode(Game.self, from: combatSave), restored)
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(Game())) as? [String: Any])
+        old.removeValue(forKey: "trial")
+        XCTAssertEqual(try JSONDecoder().decode(Game.self, from: JSONSerialization.data(withJSONObject: old)), Game())
+    }
+
     func testIntroductionRewardsAllowEitherFirstEvolution() throws {
         let catalog = try Catalog.load()
         var game = Game()

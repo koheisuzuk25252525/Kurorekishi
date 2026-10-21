@@ -1,18 +1,348 @@
 {
   "nodes": [
-    {"id":"arm1","route":"右腕","name":"右腕の包帯","detail":"これは傷ではない。力を閉じ込める封印だ。","cost":1,"stars":1,"requires":[]},
-    {"id":"arm2","route":"右腕","name":"第一拘束解除","detail":"包帯の下で、黒い紋章が脈を打つ。","cost":3,"stars":3,"requires":["arm1"]},
-    {"id":"arm3","route":"右腕","name":"黒龍顕現","detail":"右腕に棲まう黒龍が、遂にその名に応える。","cost":6,"stars":5,"requires":["arm2"]},
-    {"id":"eye1","route":"魔眼","name":"窓際の観測者","detail":"誰も見ていない。俺だけが、見ている。","cost":1,"stars":1,"requires":[]},
-    {"id":"eye2","route":"魔眼","name":"魔眼開放","detail":"隠した右目が、世界の綻びを視る。","cost":3,"stars":3,"requires":["eye1"]},
-    {"id":"eye3","route":"魔眼","name":"因果を視る眼","detail":"視えた。お前という存在の、終わりが。","cost":6,"stars":5,"requires":["eye2"]},
-    {"id":"chant1","route":"詠唱","name":"名を持つ言葉","detail":"文字に読みを与える。それが最初の契約。","cost":1,"stars":1,"requires":[]},
-    {"id":"chant2","route":"詠唱","name":"長文詠唱","detail":"深淵より出でし黒き旋律よ、我が声に応えよ。","cost":3,"stars":3,"requires":["chant1"]},
-    {"id":"chant3","route":"詠唱","name":"終焉ノ詠唱","detail":"世界が沈黙する。最後の一節を待っている。","cost":6,"stars":5,"requires":["chant2"]}
+    {
+      "id": "arm1",
+      "route": "右腕",
+      "name": "右腕の包帯",
+      "detail": "これは傷ではない。力を閉じ込める封印だ。",
+      "cost": 1,
+      "stars": 1,
+      "requires": []
+    },
+    {
+      "id": "arm2",
+      "route": "右腕",
+      "name": "第一拘束解除",
+      "detail": "包帯の下で、黒い紋章が脈を打つ。",
+      "cost": 3,
+      "stars": 3,
+      "requires": [
+        "arm1"
+      ]
+    },
+    {
+      "id": "arm3",
+      "route": "右腕",
+      "name": "黒龍顕現",
+      "detail": "右腕に棲まう黒龍が、遂にその名に応える。",
+      "cost": 6,
+      "stars": 5,
+      "requires": [
+        "arm2"
+      ]
+    },
+    {
+      "id": "eye1",
+      "route": "魔眼",
+      "name": "窓際の観測者",
+      "detail": "誰も見ていない。俺だけが、見ている。",
+      "cost": 1,
+      "stars": 1,
+      "requires": []
+    },
+    {
+      "id": "eye2",
+      "route": "魔眼",
+      "name": "魔眼開放",
+      "detail": "隠した右目が、世界の綻びを視る。",
+      "cost": 3,
+      "stars": 3,
+      "requires": [
+        "eye1"
+      ]
+    },
+    {
+      "id": "eye3",
+      "route": "魔眼",
+      "name": "因果を視る眼",
+      "detail": "視えた。お前という存在の、終わりが。",
+      "cost": 6,
+      "stars": 5,
+      "requires": [
+        "eye2"
+      ]
+    },
+    {
+      "id": "chant1",
+      "route": "詠唱",
+      "name": "名を持つ言葉",
+      "detail": "文字に読みを与える。それが最初の契約。",
+      "cost": 1,
+      "stars": 1,
+      "requires": []
+    },
+    {
+      "id": "chant2",
+      "route": "詠唱",
+      "name": "長文詠唱",
+      "detail": "深淵より出でし黒き旋律よ、我が声に応えよ。",
+      "cost": 3,
+      "stars": 3,
+      "requires": [
+        "chant1"
+      ]
+    },
+    {
+      "id": "chant3",
+      "route": "詠唱",
+      "name": "終焉ノ詠唱",
+      "detail": "世界が沈黙する。最後の一節を待っている。",
+      "cost": 6,
+      "stars": 5,
+      "requires": [
+        "chant2"
+      ]
+    },
+    {
+      "id": "arm4",
+      "route": "右腕",
+      "name": "神喰らいの右腕",
+      "detail": "敵の力さえ、この腕の糧に変える。",
+      "cost": 9,
+      "stars": 6,
+      "requires": [
+        "arm3"
+      ]
+    },
+    {
+      "id": "arm5",
+      "route": "右腕",
+      "name": "終焉を掴む手",
+      "detail": "世界を閉ざす扉を、素手で引き裂く。",
+      "cost": 12,
+      "stars": 7,
+      "requires": [
+        "arm4"
+      ]
+    },
+    {
+      "id": "eye4",
+      "route": "魔眼",
+      "name": "世界の理を視る眼",
+      "detail": "見えた未来を、選び直す。",
+      "cost": 12,
+      "stars": 7,
+      "requires": [
+        "eye3"
+      ]
+    },
+    {
+      "id": "chant4",
+      "route": "詠唱",
+      "name": "真名解放",
+      "detail": "書き続けた名を、世界に刻む。",
+      "cost": 12,
+      "stars": 7,
+      "requires": [
+        "chant3"
+      ]
+    }
   ],
   "resonances": [
-    {"id":"sealeye","name":"封印を視る魔眼","requires":["arm1","eye2"],"multiplier":1.3,"chant":"視えたぞ。世界を縛る、その鎖が。"},
-    {"id":"dragonword","name":"黒龍ノ真名","requires":["arm3","chant2"],"multiplier":1.5,"chant":"我が声に応えよ——黒龍、顕現。"},
-    {"id":"lastword","name":"因果終焉","requires":["eye3","chant3"],"multiplier":1.6,"chant":"結末は、既に書いた。——終われ。"}
+    {
+      "id": "sealeye",
+      "name": "封印を視る魔眼",
+      "requires": [
+        "arm1",
+        "eye2"
+      ],
+      "multiplier": 1.3,
+      "chant": "視えたぞ。世界を縛る、その鎖が。"
+    },
+    {
+      "id": "dragonword",
+      "name": "黒龍ノ真名",
+      "requires": [
+        "arm3",
+        "chant2"
+      ],
+      "multiplier": 1.5,
+      "chant": "我が声に応えよ——黒龍、顕現。"
+    },
+    {
+      "id": "lastword",
+      "name": "因果終焉",
+      "requires": [
+        "eye3",
+        "chant3"
+      ],
+      "multiplier": 1.6,
+      "chant": "結末は、既に書いた。——終われ。"
+    }
+  ],
+  "trials": [
+    {
+      "id": "dragon",
+      "rewards": [
+        "arm3"
+      ],
+      "requires": [
+        "arm2"
+      ],
+      "title": "封印の奥で、何かが嗤う",
+      "place": "放課後・旧体育館",
+      "enemy": "鉄殻の残響",
+      "opening": "漆黒拳を受けても、鉄の殻は閉じたまま。\n右腕の奥から、爪で掻く音がする。",
+      "crisis": "拳だけでは、届かない。\n殻が軋み、こちらへ迫る。",
+      "vow": "腕の奥の声に、名を与える",
+      "chant": "目覚めろ——我が右腕に棲まう黒龍。",
+      "victory": "殻を喰い破ったのは、右腕から現れた黒い顎だった。",
+      "hp": 144,
+      "attack": 18
+    },
+    {
+      "id": "eye",
+      "rewards": [
+        "eye1",
+        "eye2"
+      ],
+      "requires": [
+        "arm2"
+      ],
+      "title": "誰もいない廊下で",
+      "place": "夕暮れ・渡り廊下",
+      "enemy": "不可視の観測者",
+      "opening": "足音だけが、近づいてくる。\n右腕を振るっても、何にも触れない。",
+      "crisis": "見えない刃が、頬をかすめる。\n前髪の下で、右目が疼いた。",
+      "vow": "隠した右目を、開く",
+      "chant": "視えたぞ。お前を縛る、その鎖が。",
+      "victory": "見えたのは敵の姿ではない。存在を繋ぎ止める、赤い一本の線。",
+      "hp": 150,
+      "attack": 18
+    },
+    {
+      "id": "word",
+      "rewards": [
+        "chant1",
+        "chant2"
+      ],
+      "requires": [
+        "arm2"
+      ],
+      "title": "声を奪う教室",
+      "place": "夜・空き教室",
+      "enemy": "沈黙の聴衆",
+      "opening": "机に座る黒い影が、同時にこちらを向く。\n声が、喉の奥で消える。",
+      "crisis": "短い技名は、静寂に呑まれた。\nそれなら——一息では消せないほど、長く。",
+      "vow": "ノートの詠唱を、最後まで叫ぶ",
+      "chant": "深淵より出でし黒き旋律よ——我が声に応えよ。",
+      "victory": "最後の一節が響いた瞬間、教室の窓が夜空を映し直した。",
+      "hp": 150,
+      "attack": 18
+    },
+    {
+      "id": "devour",
+      "rewards": [
+        "arm4"
+      ],
+      "requires": [
+        "arm3"
+      ],
+      "title": "黒龍すら焼く炎",
+      "place": "旧校舎・焼却炉",
+      "enemy": "灰燼の番人",
+      "opening": "黒龍の顎が、白い炎に押し戻される。\n捨てられた設定が、燃え続けている。",
+      "crisis": "炎を避ければ、背後のノートが燃える。\n右腕を、炎の中へ伸ばす。",
+      "vow": "その炎ごと、喰らう",
+      "chant": "神ですら、この右腕の前では前菜に過ぎない。",
+      "victory": "焼かれるはずの腕に、炎が吸い込まれた。黒龍が、もう一度嗤う。",
+      "hp": 240,
+      "attack": 20
+    },
+    {
+      "id": "causality",
+      "rewards": [
+        "eye3"
+      ],
+      "requires": [
+        "eye2"
+      ],
+      "title": "同じ一秒の果て",
+      "place": "雨・屋上",
+      "enemy": "反復する残響",
+      "opening": "何度殴っても、敵は同じ場所に戻る。\n雨粒さえ、同じ軌道を辿っている。",
+      "crisis": "今を視るだけでは、終わらない。\n右目の奥に、まだ起きていない斬撃が映る。",
+      "vow": "一秒先の自分を、信じる",
+      "chant": "視えた——お前という存在の、終わりが。",
+      "victory": "誰もいない場所へ放った一撃に、未来の敵が重なった。",
+      "hp": 220,
+      "attack": 20
+    },
+    {
+      "id": "silence",
+      "rewards": [
+        "chant3"
+      ],
+      "requires": [
+        "chant2"
+      ],
+      "title": "終わらないチャイム",
+      "place": "深夜・放送室",
+      "enemy": "無限の予鈴",
+      "opening": "チャイムに合わせて、新しい影が生まれる。\n倒すだけでは、朝まで終わらない。",
+      "crisis": "詠唱を覆うほど、音が増えていく。\nならば、音のある世界ごと黙らせる。",
+      "vow": "終わりの一節を、書き足す",
+      "chant": "終われ。この世界の、くだらない夜ごと。",
+      "victory": "校舎から音が消えた。残ったのは、自分の呼吸だけだった。",
+      "hp": 220,
+      "attack": 20
+    },
+    {
+      "id": "lastarm",
+      "rewards": [
+        "arm5"
+      ],
+      "requires": [
+        "arm4"
+      ],
+      "title": "世界が閉じる前に",
+      "place": "境界・封鎖された校門",
+      "enemy": "終端の門",
+      "opening": "校門の向こうで、街が紙のように折り畳まれていく。\n黒龍の爪でも、扉は開かない。",
+      "crisis": "門には、名前すら無い。\n掴むべきものは、鉄ではない。",
+      "vow": "終わりという概念を、掴む",
+      "chant": "閉じるな。俺の続きを、まだ書いていない。",
+      "victory": "門ではなく、閉ざされた結末そのものが引き裂かれた。",
+      "hp": 360,
+      "attack": 22
+    },
+    {
+      "id": "worldeye",
+      "rewards": [
+        "eye4"
+      ],
+      "requires": [
+        "eye3"
+      ],
+      "title": "誤字だらけの未来",
+      "place": "境界・鏡の教室",
+      "enemy": "確定した明日",
+      "opening": "どの未来にも、自分の敗北だけが映っている。\n右目は、それが事実だと告げる。",
+      "crisis": "視えるだけの眼なら、ここで終わる。\nだが、この未来にも設定を書いた誰かがいる。",
+      "vow": "未来の誤字を、書き換える",
+      "chant": "その結末は、誤字だ。——訂正する。",
+      "victory": "敗北の一行が消える。空いた余白に、自分の一歩を刻んだ。",
+      "hp": 340,
+      "attack": 22
+    },
+    {
+      "id": "truename",
+      "rewards": [
+        "chant4"
+      ],
+      "requires": [
+        "chant3"
+      ],
+      "title": "最後の名を呼べ",
+      "place": "境界・白紙の図書室",
+      "enemy": "名を消すもの",
+      "opening": "ノートから技名が、次々に消えていく。\n長い詠唱さえ、白い息に変わる。",
+      "crisis": "借りた言葉は、もう残っていない。\n小五の夜、自分でつけたあの名前だけが残る。",
+      "vow": "自分が書いた真名を、名乗る",
+      "chant": "我が真名は——漆黒の断罪者、ヴァン=ノクス。",
+      "victory": "消された頁に、文字が戻る。今度は誰にも、この名を消させない。",
+      "hp": 340,
+      "attack": 22
+    }
   ]
 }
