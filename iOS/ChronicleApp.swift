@@ -1,5 +1,5 @@
 import SwiftUI
-import ChronicleCore
+import UIKit
 
 @main
 struct ChronicleApp: App {

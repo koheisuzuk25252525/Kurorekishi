@@ -93,3 +93,15 @@ bash scripts/uninstall-mac-sync.sh
 
 GitHub ActionsにはSwiftテストとiOSシミュレータ用ビルドを設定。
 push後にActionsの結果を確認する。CI成功は実際の画面操作の検証とは別。
+
+## XcodeでChronicleCoreが見つからない場合
+
+現在のiOSプロジェクトは、ゲームのSwiftコードをアプリのターゲットで直接コンパイルする。
+ChronicleCoreのローカルパッケージ解決は不要。Swift Packageはロジックの単体テスト用に残している。
+JSONはアプリのResourcesへコピーし、アプリではBundle.main、単体テストではBundle.moduleから読む。
+
+修正版取得はリポジトリのルートで`bash scripts/sync-mac.sh`を実行する。
+「Skipped」が出た場合はログの理由を確認し、ローカル変更を保存・コミットなどで保護してから再実行する。
+`git log -1 --oneline`で最新コミットを確認する。Xcodeで開いているプロジェクトと、
+同期したフォルダの`iOS/Chronicle.xcodeproj`が同じであることを確認する。
+Xcodeを閉じて同プロジェクトを開き直し、Product → Clean Build Folder、その後Runする。

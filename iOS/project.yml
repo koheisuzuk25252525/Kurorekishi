@@ -2,23 +2,22 @@ name: Chronicle
 options:
   deploymentTarget:
     iOS: '17.0'
-packages:
-  ChronicleCore:
-    path: ..
 targets:
   Chronicle:
     type: application
     platform: iOS
     sources:
       - path: ChronicleApp.swift
-    dependencies:
-      - package: ChronicleCore
+      - path: ../Sources/ChronicleCore/Chronicle.swift
+      - path: ../Sources/ChronicleCore/Resources/catalog.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.kurorekishi.chronicle
         SWIFT_VERSION: '5.9'
         CLANG_ENABLE_MODULES: YES
         ALWAYS_SEARCH_USER_PATHS: NO
+        HEADERMAP_USES_VFS: YES
         DEFINES_MODULE: YES
         TARGETED_DEVICE_FAMILY: '1'
         GENERATE_INFOPLIST_FILE: YES

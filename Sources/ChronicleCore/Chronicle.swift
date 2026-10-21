@@ -22,7 +22,12 @@ public struct Catalog: Codable {
     public let nodes: [Node]
     public let resonances: [Resonance]
     public static func load() throws -> Catalog {
-        guard let url = Bundle.module.url(forResource: "catalog", withExtension: "json") else {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle.main
+        #endif
+        guard let url = bundle.url(forResource: "catalog", withExtension: "json") else {
             throw CocoaError(.fileNoSuchFile)
         }
         return try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
