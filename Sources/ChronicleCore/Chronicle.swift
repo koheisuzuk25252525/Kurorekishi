@@ -49,6 +49,16 @@ public struct Game: Codable, Equatable {
     public private(set) var log = "最初の一行を、書き込め。"
     public init() {}
 
+    /// Tutorial reward is applied only to a new game; existing saves are preserved.
+    public mutating func completeIntroduction() {
+        guard unlocked.isEmpty, phase == .notebook, day == 1 else { return }
+        unlocked = ["arm1", "arm2"]
+        selected = unlocked
+        ink = 6
+        day = 2
+        log = "封印は解けた。次は、何を宿す？"
+    }
+
     public func canUnlock(_ node: Node) -> Bool {
         !unlocked.contains(node.id) && ink >= node.cost && Set(node.requires).isSubset(of: unlocked)
     }

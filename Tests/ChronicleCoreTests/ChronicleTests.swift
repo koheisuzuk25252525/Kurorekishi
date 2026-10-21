@@ -2,6 +2,33 @@ import XCTest
 @testable import ChronicleCore
 
 final class ChronicleTests: XCTestCase {
+    func testIntroductionRewardsAllowEitherFirstEvolution() throws {
+        let catalog = try Catalog.load()
+        var game = Game()
+        game.completeIntroduction()
+        XCTAssertEqual(game.selected, ["arm1", "arm2"])
+        XCTAssertEqual(game.damage(catalog), 48)
+        let dragon = try XCTUnwrap(catalog.nodes.first { $0.id == "arm3" })
+        XCTAssertTrue(game.canUnlock(dragon))
+        var eyeGame = game
+        for id in ["eye1", "eye2"] {
+            eyeGame.unlock(try XCTUnwrap(catalog.nodes.first { $0.id == id }))
+        }
+        XCTAssertTrue(eyeGame.selected.contains("eye2"))
+        XCTAssertEqual(eyeGame.activeResonances(catalog).map(\.id), ["sealeye"])
+        let snapshot = eyeGame
+        eyeGame.completeIntroduction()
+        XCTAssertEqual(eyeGame, snapshot)
+    }
+
+    func testIntroductionPreservesExistingProgress() throws {
+        var game = Game()
+        game.unlock(try Catalog.load().nodes[0])
+        let previous = game
+        game.completeIntroduction()
+        XCTAssertEqual(game, previous)
+    }
+
     func testPrerequisitesAndBudget() throws {
         let catalog = try Catalog.load()
         var game = Game()
