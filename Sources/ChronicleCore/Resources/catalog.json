@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {"id":"arm1","route":"右腕","name":"右腕の包帯","detail":"これは傷ではない。力を閉じ込める封印だ。","cost":1,"stars":1,"requires":[]},
+    {"id":"arm2","route":"右腕","name":"第一拘束解除","detail":"包帯の下で、黒い紋章が脈を打つ。","cost":3,"stars":3,"requires":["arm1"]},
+    {"id":"arm3","route":"右腕","name":"黒龍顕現","detail":"右腕に棲まう黒龍が、遂にその名に応える。","cost":6,"stars":5,"requires":["arm2"]},
+    {"id":"eye1","route":"魔眼","name":"窓際の観測者","detail":"誰も見ていない。俺だけが、見ている。","cost":1,"stars":1,"requires":[]},
+    {"id":"eye2","route":"魔眼","name":"魔眼開放","detail":"隠した右目が、世界の綻びを視る。","cost":3,"stars":3,"requires":["eye1"]},
+    {"id":"eye3","route":"魔眼","name":"因果を視る眼","detail":"視えた。お前という存在の、終わりが。","cost":6,"stars":5,"requires":["eye2"]},
+    {"id":"chant1","route":"詠唱","name":"名を持つ言葉","detail":"文字に読みを与える。それが最初の契約。","cost":1,"stars":1,"requires":[]},
+    {"id":"chant2","route":"詠唱","name":"長文詠唱","detail":"深淵より出でし黒き旋律よ、我が声に応えよ。","cost":3,"stars":3,"requires":["chant1"]},
+    {"id":"chant3","route":"詠唱","name":"終焉ノ詠唱","detail":"世界が沈黙する。最後の一節を待っている。","cost":6,"stars":5,"requires":["chant2"]}
+  ],
+  "resonances": [
+    {"id":"sealeye","name":"封印を視る魔眼","requires":["arm1","eye2"],"multiplier":1.3,"chant":"視えたぞ。世界を縛る、その鎖が。"},
+    {"id":"dragonword","name":"黒龍ノ真名","requires":["arm3","chant2"],"multiplier":1.5,"chant":"我が声に応えよ——黒龍、顕現。"},
+    {"id":"lastword","name":"因果終焉","requires":["eye3","chant3"],"multiplier":1.6,"chant":"結末は、既に書いた。——終われ。"}
+  ]
+}

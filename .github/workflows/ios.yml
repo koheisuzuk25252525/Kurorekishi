@@ -1,0 +1,16 @@
+name: iOS validation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core tests
+        run: swift test
+      - name: iOS Simulator build
+        run: >-
+          xcodebuild -project iOS/Chronicle.xcodeproj -scheme Chronicle
+          -sdk iphonesimulator -configuration Debug
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
