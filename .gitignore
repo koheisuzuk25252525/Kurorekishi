@@ -5,3 +5,6 @@ DerivedData/
 .DS_Store
 
 .mac-sync/
+
+# Xcode generates this workspace inside the checked-in project.
+iOS/Chronicle.xcodeproj/project.xcworkspace/
