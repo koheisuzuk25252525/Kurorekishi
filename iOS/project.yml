@@ -17,6 +17,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.kurorekishi.chronicle
         SWIFT_VERSION: '5.9'
+        CLANG_ENABLE_MODULES: YES
+        ALWAYS_SEARCH_USER_PATHS: NO
+        DEFINES_MODULE: YES
         TARGETED_DEVICE_FAMILY: '1'
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
