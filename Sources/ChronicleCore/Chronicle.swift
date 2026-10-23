@@ -8,6 +8,9 @@ public struct Node: Codable, Identifiable {
     public let cost: Int
     public let stars: Int
     public let requires: [String]
+    public let reading: String?
+    public let effect: String?
+    public let verse: String?
 }
 
 public struct Resonance: Codable, Identifiable {
@@ -46,9 +49,16 @@ public enum CombatArt: String, Codable, CaseIterable {
     }
 }
 public enum BattleAction: String, Codable {
-    case strike, breakSeal, observe, chant, release, `guard`, focus, punch, escape
+    case strike, breakSeal, observe, chant, release, `guard`, focus, punch, escape, devour, rend, rewrite, trueName
+}
+public struct AscensionState: Codable, Equatable {
+    public var absorbed = 0
+    public var rewriteUsed = false
+    public var silence = 0
+    public init() {}
 }
 public struct BattleState: Codable, Equatable {
+    public var ascension: AscensionState?
     public var turn = 0
     public var armor = 0
     public var revealed = 0
@@ -91,6 +101,7 @@ public struct Catalog: Codable {
     public let nodes: [Node]
     public let resonances: [Resonance]
     public let trials: [Trial]
+    public var abilities: [Node] { nodes.filter { !$0.requires.isEmpty } }
     public static func load() throws -> Catalog {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
@@ -229,11 +240,13 @@ public struct Game: Codable, Equatable {
 
     public var enemyStyle: EnemyStyle { trial?.story.encounter?.style ?? .open }
     public var intent: Intent {
+        if (battle?.ascension?.silence ?? 0) > 0 { return .recover }
         let pattern = trial?.story.encounter?.pattern ?? [.attack]
         guard !pattern.isEmpty else { return .attack }
         return pattern[(battle?.turn ?? 0) % pattern.count]
     }
     public var nextIntent: Intent {
+        if (battle?.ascension?.silence ?? 0) > 1 { return .recover }
         let pattern = trial?.story.encounter?.pattern ?? [.attack]
         guard !pattern.isEmpty else { return .attack }
         return pattern[((battle?.turn ?? 0) + 1) % pattern.count]
@@ -241,14 +254,26 @@ public struct Game: Codable, Equatable {
     public var availableArts: [CombatArt] {
         var arts: [CombatArt] = []
         if selected.contains("arm2") || selected.contains("arm3") { arts.append(.arm) }
-        if selected.contains("eye2") { arts.append(.eye) }
-        if selected.contains("chant2") { arts.append(.chant) }
+        if hasEye { arts.append(.eye) }
+        if hasChant { arts.append(.chant) }
         return arts
+    }
+    private var hasEye: Bool { !selected.isDisjoint(with: ["eye2", "eye3", "eye4"]) }
+    private var hasChant: Bool { !selected.isDisjoint(with: ["chant2", "chant3", "chant4"]) }
+    private var hostileIntent: Bool { [.attack, .slam, .lunge, .interrupt].contains(intent) }
+    public var finisher: BattleAction {
+        guard battle?.art == .chant, (battle?.chanting ?? 0) > 0 else { return .strike }
+        return selected.contains("chant4") && battle?.chanting == 3 ? .trueName : .release
     }
     public var technique: BattleAction {
         switch battle?.art ?? .arm {
-        case .arm: return .breakSeal
-        case .eye: return .observe
+        case .arm:
+            if selected.contains("arm5") && (battle?.ascension?.absorbed ?? 0) > 0 { return .rend }
+            if selected.contains("arm4") && hostileIntent { return .devour }
+            return .breakSeal
+        case .eye:
+            if selected.contains("eye4") && battle?.ascension?.rewriteUsed != true && hostileIntent { return .rewrite }
+            return .observe
         case .chant: return .chant
         }
     }
@@ -264,17 +289,21 @@ public struct Game: Codable, Equatable {
     private mutating func prepareBattle() {
         battle = BattleState(style: enemyStyle)
         let newIds = trial?.story.rewards ?? []
-        if newIds.contains("eye2") { battle?.art = .eye }
-        else if newIds.contains("chant2") { battle?.art = .chant }
+        if newIds.contains(where: { $0.hasPrefix("eye") }) { battle?.art = .eye }
+        else if newIds.contains(where: { $0.hasPrefix("chant") }) { battle?.art = .chant }
         else { let defaultArt = availableArts.first ?? .arm; battle?.art = defaultArt }
     }
     public func canPerform(_ action: BattleAction) -> Bool {
         guard phase == .battle, let state = battle else { return false }
         switch action {
         case .breakSeal: return selected.contains("arm3") && charges > 0
-        case .observe: return selected.contains("eye2")
-        case .chant: return selected.contains("chant2") && state.chanting < 3
-        case .release: return selected.contains("chant2") && state.chanting > 0 && charges > 0
+        case .observe: return hasEye
+        case .chant: return hasChant && state.chanting < 3
+        case .release: return hasChant && state.chanting > 0 && charges > 0
+        case .devour: return selected.contains("arm4") && charges > 0 && hostileIntent
+        case .rend: return selected.contains("arm5") && charges > 0 && (state.ascension?.absorbed ?? 0) > 0
+        case .rewrite: return selected.contains("eye4") && state.ascension?.rewriteUsed != true && hostileIntent
+        case .trueName: return selected.contains("chant4") && state.chanting == 3 && charges > 0
         case .strike: return charges > 0
         default: return true
         }
@@ -289,10 +318,13 @@ public struct Game: Codable, Equatable {
         switch action {
         case .strike: hit = base
         case .punch: hit = 14
-        case .release: hit = base * (1 + state.chanting)
+        case .release, .trueName: hit = base * (1 + state.chanting)
+        case .rend: hit = base + (state.ascension?.absorbed ?? 0) * 3
         case .breakSeal: hit = state.armor > 0 ? max(8, base / 3) : base
         default: return 0
         }
+        if action == .rend || action == .trueName { return hit }
+        if action != .punch { hit += state.ascension?.absorbed ?? 0 }
         if enemyStyle == .hidden && state.revealed == 0 && intent != .recover { return 0 }
         if state.armor > 0 && action != .breakSeal { hit = max(1, hit / 5) }
         if action == .breakSeal && state.armor > 0 && intent != .recover && state.revealed == 0 { hit = 1 }
@@ -318,13 +350,29 @@ public struct Game: Codable, Equatable {
         state.lastReceived = 0
         state.broken = false
         state.interrupted = false
+        var ascension = state.ascension ?? AscensionState()
         var text: [String] = []
         var guarding = false
         var dodging = false
+        var nullifying = false
         switch action {
-        case .strike, .punch, .release, .breakSeal:
+        case .strike, .punch, .release, .breakSeal, .rend, .trueName:
             if action != .punch { charges -= 1; focused = false }
-            if action == .release { state.chanting = 0 }
+            if action == .release || action == .trueName {
+                if selected.contains("chant3") && state.chanting >= 2 {
+                    ascension.silence = 2
+                    text.append("終焉ノ詠唱——敵の行動を二手、静寂に葬る。")
+                }
+                state.chanting = 0
+            }
+            if action != .punch { ascension.absorbed = 0 }
+            if action == .rend || action == .trueName {
+                state.armor = 0
+                state.revealed = 4
+                state.broken = true
+                text.append(action == .rend ? "終焉を掴む手——喰らった力で、防御という概念を引き裂く。" : "我が真名を刻め——防御を消し、存在を取り戻す。")
+            }
+            if action == .trueName { vitality = min(100, vitality + 24) }
             if action == .breakSeal && state.armor > 0 && (incoming == .recover || state.revealed > 0) {
                 state.armor = 0
                 state.broken = true
@@ -337,8 +385,19 @@ public struct Game: Codable, Equatable {
             else { text.append("\(hit)ダメージ。\(action == .release ? "積み重ねた詠唱が、現実を裂いた。" : "設定を叩き込んだ。")") }
         case .observe:
             state.revealed = 4 // Includes this turn; three subsequent decisions remain.
-            dodging = incoming == .lunge
+            dodging = incoming == .lunge || (selected.contains("eye3") && incoming == .slam)
             text.append(dodging ? "右目が、襲い来る軌道を視た。紙一重で見切る。" : "魔眼が弱点を捉えた。3手の間、狙いが定まり技の威力が2倍。")
+        case .devour:
+            charges -= 1
+            let stolen = (trial?.story.attack ?? (12 + day * 2)) * ([.slam, .lunge].contains(incoming) ? 2 : 1)
+            ascension.absorbed = min(60, stolen)
+            nullifying = true
+            text.append("神喰らいの右腕——襲来する力を喰らった。被害0。次の技に\(ascension.absorbed)を宿す。")
+        case .rewrite:
+            ascension.rewriteUsed = true
+            state.revealed = 4
+            nullifying = true
+            text.append("世界の理を視る眼——その結末は、誤字だ。敵の一手を白紙に戻し、弱点を刻んだ。")
         case .chant:
             state.chanting += 1
             text.append("詠唱 \(state.chanting)/3。まだ終わらせない——。")
@@ -356,6 +415,7 @@ public struct Game: Codable, Equatable {
         }
         state.turn += 1
         state.revealed = max(0, state.revealed - 1)
+        state.ascension = ascension
         if enemyHP == 0 {
             battle = state
             phase = .victory
@@ -370,6 +430,12 @@ public struct Game: Codable, Equatable {
         }
         let attack = trial?.story.attack ?? (12 + day * 2)
         var received = 0
+        if nullifying || ascension.silence > 0 {
+            if ascension.silence > 0 {
+                ascension.silence -= 1
+                text.append("静寂が、敵の行動を消した。")
+            }
+        } else {
         switch incoming {
         case .windup: text.append("敵が力を溜める。次の予兆を見ろ。")
         case .approach: text.append("敵は距離を詰める。次の動きに備えろ。")
@@ -389,6 +455,8 @@ public struct Game: Codable, Equatable {
                 }
             }
         }
+        }
+        state.ascension = ascension
         if guarding { received /= 4 }
         vitality = max(0, vitality - received)
         state.lastReceived = received

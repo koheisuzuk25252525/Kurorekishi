@@ -85,10 +85,11 @@ struct ChronicleView: View {
         .sheet(isPresented: $showingBattleHelp) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("ノートの余白").font(.title.bold()).fontDesign(.serif)
+                    Text("禁書の注釈").font(.title.bold()).fontDesign(.serif)
                     Text(game.trial?.story.encounter?.note ?? "敵の予兆を読み、設定を使い分ける。")
                     Text("右腕：硬直か見抜いた弱点へ龍顎。殻を壊す。\n魔眼：3手の間狙いを定める。飛びかかりに合わせれば見切れる。\n詠唱：最大3段階。防御で次の妨害を1回防ぎ、強打の前に解き放つ。")
                     Text("集中：技の残数を1回復し、次の攻撃技を1.5倍。敵にも1手を渡す。\n防御：その手の被害を1/4にする。\n系統の切替は手番を消費しない。")
+                    Text("上位解放：神喰らいは攻撃の手に現れる。喰らった力があれば終焉を掴める。因果の眼は強打も見切る。終焉ノ詠唱は二節以上で二手を封じ、真名解放は三節で発動する。")
                     Text("直前の一手").font(.headline)
                     Text(game.log)
                     Button("戦場に戻る") { showingBattleHelp = false }
@@ -157,9 +158,10 @@ struct ChronicleView: View {
                     .background(crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
             }
             if available.isEmpty {
-                Text("すべての系譜が、あなたの力になった。").font(.headline)
+                Text("——十の封印、完全解放——").font(.title2.bold()).fontDesign(.serif)
+                Text("世界が否定した全てを、このノートは肯定した。").font(.footnote)
             }
-            Text("あなたの系譜").font(.title2.bold()).fontDesign(.serif)
+            Text("禁書・終焉ノ能力系譜").font(.title2.bold()).fontDesign(.serif)
             SkillConstellation(catalog: catalog, learned: game.unlocked, highlighted: [], crimson: crimson)
                 .frame(height: 430).background(Color.black, in: RoundedRectangle(cornerRadius: 18))
             Button(showingTree ? "設定を閉じる" : "習得済みの設定を組み替える") { showingTree.toggle() }
@@ -271,7 +273,7 @@ struct ChronicleView: View {
                         ForEach(game.availableArts, id: \.self) { art in Text(art.title).tag(art) }
                     }.pickerStyle(.segmented)
                 }
-                let finisher: BattleAction = game.battle?.art == .chant && (game.battle?.chanting ?? 0) > 0 ? .release : .strike
+                let finisher = game.finisher
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     battleButton(game.technique, catalog: catalog)
                     battleButton(finisher, catalog: catalog)
@@ -303,6 +305,11 @@ struct ChronicleView: View {
         if state.armor > 0 { parts.append("殻あり：硬直か継ぎ目を狙う") }
         if game.enemyStyle == .hidden { parts.append(state.revealed > 0 ? "看破 あと\(state.revealed)手" : game.intent == .recover ? "硬直：今だけ狙える" : "不可視：技が当たらない") }
         if game.enemyStyle == .silencer { parts.append("短い技は減衰：詠唱を解き放つ") }
+        if let higher = state.ascension {
+            if higher.absorbed > 0 { parts.append("喰らった力 \(higher.absorbed)") }
+            if higher.silence > 0 { parts.append("静寂 あと\(higher.silence)手") }
+            if higher.rewriteUsed { parts.append("未来書換え 使用済") }
+        }
         if state.ward { parts.append("妨害への備え 1回") }
         if game.focused { parts.append("次の技 ×1.5") }
         return parts.isEmpty ? "予兆を読み、設定を使う。" : parts.joined(separator: " ／ ")
@@ -310,6 +317,10 @@ struct ChronicleView: View {
 
     private func actionLabel(_ action: BattleAction, catalog: Catalog) -> (String, String) {
         switch action {
+        case .devour: return ("神喰らい", "敵の一手を吸収／残数1")
+        case .rend: return ("終焉を掴む手", "吸収した力で防御を貫く")
+        case .rewrite: return ("世界の理を書き換える", "一戦一度／敵の一手を消す")
+        case .trueName: return ("真名解放", "全防御貫通／存在+24")
         case .breakSeal: return ("黒龍・殻を砕く", game.selected.contains("arm3") ? "硬直か看破中に有効" : "黒龍は未習得")
         case .observe: return ("魔眼・見抜く", "看破3手／襲撃を見切る")
         case .chant: return ("詠唱を重ねる", "最大3段階・妨害に注意")
@@ -334,7 +345,7 @@ struct ChronicleView: View {
         let turn = game.battle?.turn
         game.perform(action, catalog: catalog)
         guard game.battle?.turn != turn else { return }
-        UIImpactFeedbackGenerator(style: action == .release || game.battle?.broken == true ? .heavy : .light).impactOccurred()
+        UIImpactFeedbackGenerator(style: [.release, .trueName, .rend, .devour, .rewrite].contains(action) || game.battle?.broken == true ? .heavy : .light).impactOccurred()
         guard !reduceMotion else { return }
         withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) { impact = true }
         Task { @MainActor in
@@ -544,17 +555,23 @@ private struct SkillConstellation: View {
     let crimson: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealed = false
+    @State private var inspected: Node?
+    private let gold = Color(red: 0.85, green: 0.66, blue: 0.29)
     private let rows = [["arm2"], ["arm3", "eye2", "chant2"],
                         ["arm4", "eye3", "chant3"], ["arm5", "eye4", "chant4"]]
 
     var body: some View {
         VStack(spacing: 0) {
             let total = rows.flatMap { $0 }
-            Text("習得 \(total.filter { learned.contains($0) }.count) / \(total.count)")
+            Text("覚醒 \(total.filter { learned.contains($0) }.count) / \(total.count) · 禁書ノ系譜")
                 .font(.caption.monospaced().bold()).foregroundStyle(crimson).padding(.top, 14)
             GeometryReader { geometry in
                 let width = geometry.size.width
                 ZStack {
+                    Circle().stroke(gold.opacity(0.14), lineWidth: 1)
+                        .frame(width: width * 0.9, height: width * 0.9).position(x: width / 2, y: 190)
+                    Circle().stroke(gold.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [2, 10]))
+                        .frame(width: width * 0.76, height: width * 0.76).position(x: width / 2, y: 190)
                     ForEach(1..<4) { row in
                         ForEach(0..<3) { column in
                             let id = rows[row][column]
@@ -574,10 +591,13 @@ private struct SkillConstellation: View {
                         ForEach(Array(rows[row].enumerated()), id: \.element) { column, id in
                             let active = learned.contains(id)
                             let newly = highlighted.contains(id)
+                            Button {
+                                inspected = catalog.nodes.first { $0.id == id }
+                            } label: {
                             VStack(spacing: 5) {
                                 ZStack {
                                     Circle().fill(active ? crimson.opacity(0.22) : Color.black)
-                                    Circle().stroke(active ? crimson : Color.white.opacity(0.3), lineWidth: newly ? 3 : 1)
+                                    Circle().stroke(active ? crimson : row == 3 ? gold.opacity(0.8) : Color.white.opacity(0.3), lineWidth: newly ? 3 : 1)
                                     Image(systemName: active ? (id.hasPrefix("arm") ? "flame.fill" : id.hasPrefix("eye") ? "eye.fill" : "waveform") : "lock.fill")
                                         .font(.system(size: newly ? 22 : 15)).foregroundStyle(active ? crimson : .gray)
                                 }.frame(width: newly ? 52 : 38, height: newly ? 52 : 38)
@@ -586,15 +606,19 @@ private struct SkillConstellation: View {
                                     .font(.system(size: 10, weight: active ? .bold : .regular))
                                     .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
                                     .multilineTextAlignment(.center).frame(width: width / 3 - 5)
-                                if newly { Text("習得").font(.system(size: 9, weight: .bold)).foregroundStyle(crimson) }
-                            }.position(point(row: row, column: column, width: width))
+                                if newly { Text("封印解除").font(.system(size: 9, weight: .bold)).foregroundStyle(crimson) }
+                                else if row == 3 { Text("終式").font(.system(size: 9, weight: .bold)).foregroundStyle(gold) }
+                            }
+                            }.buttonStyle(.plain)
+                                .accessibilityLabel("\(catalog.nodes.first { $0.id == id }?.name ?? id)、\(active ? "習得済み" : "未習得")。詳細を開く")
+                                .position(point(row: row, column: column, width: width))
                                 .opacity(row == 0 || revealed ? 1 : 0)
                         }
                     }
                 }
                 .scaleEffect(revealed || reduceMotion ? 1 : 1.7, anchor: .top)
             }.padding(.horizontal, 8)
-            Text("右腕  ／  魔眼  ／  詠唱").font(.caption).foregroundStyle(.white.opacity(0.6)).padding(.bottom, 14)
+            Text("龍腕ノ封縛 ／ 因果ノ魔眼 ／ 終焉ノ言霊").font(.system(size: 10)).foregroundStyle(.white.opacity(0.6)).padding(.bottom, 14)
         }
         .task {
             if reduceMotion { revealed = true; return }
@@ -603,8 +627,34 @@ private struct SkillConstellation: View {
                 withAnimation(.easeInOut(duration: 1.8)) { revealed = true }
             } catch { }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("全10能力の系譜。光る点は習得済み、鍵は未習得。右腕、魔眼、詠唱へ枝分かれしている")
+        .sheet(item: $inspected) { node in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(learned.contains(node.id) ? "——封印解除済——" : "——未だ開かれぬ頁——")
+                        .font(.caption.bold()).foregroundStyle(crimson)
+                    Text(node.reading ?? "").font(.caption).foregroundStyle(.secondary)
+                    Text(node.name).font(.system(size: 30, weight: .black, design: .serif))
+                    Text("「\(node.verse ?? node.detail)」").font(.title3).fontDesign(.serif)
+                    Divider()
+                    Text("この設定が、現実になると").font(.headline)
+                    Text(node.effect ?? node.detail)
+                    if let story = catalog.trials.first(where: { $0.rewards.contains(node.id) }) {
+                        Text("解放事件：\(story.title)").font(.subheadline.bold())
+                        Text(story.place).font(.caption)
+                    } else { Text("最初の覚醒で習得する、全ての起点。").font(.footnote) }
+                    let children = catalog.abilities.filter { child in
+                        child.requires.contains(node.id) || catalog.trials.contains { story in
+                            story.requires.contains(node.id) && story.rewards.contains(child.id)
+                        }
+                    }
+                    if !children.isEmpty {
+                        Text("この先に眠る力").font(.headline)
+                        ForEach(children) { child in Text("◇ \(child.name)") }
+                    }
+                    Button("禁書を閉じる") { inspected = nil }.buttonStyle(.borderedProminent).tint(crimson)
+                }.padding(24)
+            }.presentationDetents([.medium, .large])
+        }
     }
 
     private func point(row: Int, column: Int, width: CGFloat) -> CGPoint {
