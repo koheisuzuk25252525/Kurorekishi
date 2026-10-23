@@ -1,0 +1,45 @@
+{
+  "charges" : 2,
+  "day" : 2,
+  "enemyHP" : 66,
+  "focused" : false,
+  "ink" : 6,
+  "log" : "目覚めろ——我が右腕に棲まう黒龍。\n78の威力で設定を上書きした。\n反撃。存在強度 -18。",
+  "phase" : "battle",
+  "selected" : [
+    "arm1",
+    "arm2",
+    "arm3"
+  ],
+  "trial" : {
+    "previousSelection" : [
+      "arm1",
+      "arm2"
+    ],
+    "stage" : "combat",
+    "story" : {
+      "attack" : 18,
+      "chant" : "目覚めろ——我が右腕に棲まう黒龍。",
+      "crisis" : "拳だけでは、届かない。\n殻が軋み、こちらへ迫る。",
+      "enemy" : "鉄殻の残響",
+      "hp" : 144,
+      "id" : "dragon",
+      "opening" : "漆黒拳を受けても、鉄の殻は閉じたまま。\n右腕の奥から、爪で掻く音がする。",
+      "place" : "放課後・旧体育館",
+      "requires" : [
+        "arm2"
+      ],
+      "rewards" : [
+        "arm3"
+      ],
+      "title" : "封印の奥で、何かが嗤う",
+      "victory" : "殻を喰い破ったのは、右腕から現れた黒い顎だった。",
+      "vow" : "腕の奥の声に、名を与える"
+    }
+  },
+  "unlocked" : [
+    "arm1",
+    "arm2"
+  ],
+  "vitality" : 54
+}

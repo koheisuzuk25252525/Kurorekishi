@@ -16,7 +16,7 @@ final class ChronicleTests: XCTestCase {
             game.awakenTrial()
             XCTAssertEqual(game.phase, .battle)
             XCTAssertFalse(Set(story.rewards).isSubset(of: game.unlocked))
-            for _ in 0..<3 { game.act("skill", catalog: catalog) }
+            winBattle(&game, catalog: catalog)
             XCTAssertEqual(game.phase, .victory, story.id)
             XCTAssertEqual(game.trial?.stage, .reward)
             XCTAssertTrue(Set(story.rewards).isSubset(of: game.unlocked))
@@ -42,7 +42,7 @@ final class ChronicleTests: XCTestCase {
                 game.beginTrial(story)
                 game.confrontTrial()
                 game.awakenTrial()
-                for _ in 0..<3 { game.act("skill", catalog: catalog) }
+                winBattle(&game, catalog: catalog)
                 XCTAssertEqual(game.phase, .victory, story.id)
                 game.returnToNotebook()
             }
@@ -167,5 +167,33 @@ final class ChronicleTests: XCTestCase {
         XCTAssertEqual(game.ink, earned)
         let restored = try JSONDecoder().decode(Game.self, from: JSONEncoder().encode(game))
         XCTAssertEqual(restored, game)
+    }
+}
+
+
+/// A readable decision policy, NOT a bypass: all actions run through the public rules.
+/// Regression scenarios still require every trial to finish, persist and grant its reward.
+func winBattle(_ game: inout Game, catalog: Catalog) {
+    for _ in 0..<40 {
+        guard game.phase == .battle else { return }
+        let state = game.battle
+        let action: BattleAction
+        switch game.enemyStyle {
+        case .armored:
+            if game.intent == .slam { action = .guard }
+            else if (state?.armor ?? 0) > 0 {
+                action = game.intent == .recover && game.charges > 0 ? .breakSeal : .focus
+            } else { action = game.charges > 0 ? .strike : .focus }
+        case .hidden:
+            if (state?.revealed ?? 0) == 0 { action = .observe }
+            else if game.intent == .lunge { action = .guard }
+            else { action = game.charges > 0 ? .strike : .focus }
+        case .silencer:
+            if (state?.chanting ?? 0) >= 2 && game.charges > 0 { action = .release }
+            else if game.intent == .interrupt && state?.ward != true { action = .guard }
+            else { action = .chant }
+        case .open: action = game.charges > 0 ? .strike : .focus
+        }
+        game.perform(action, catalog: catalog)
     }
 }

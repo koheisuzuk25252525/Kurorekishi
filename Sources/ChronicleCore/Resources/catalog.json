@@ -188,7 +188,16 @@
       "chant": "目覚めろ——我が右腕に棲まう黒龍。",
       "victory": "殻を喰い破ったのは、右腕から現れた黒い顎だった。",
       "hp": 144,
-      "attack": 18
+      "attack": 18,
+      "encounter": {
+        "style": "armored",
+        "pattern": [
+          "windup",
+          "slam",
+          "recover"
+        ],
+        "note": "殻が硬直した瞬間なら、黒龍の顎で砕ける。魔眼で継ぎ目を見抜く手もある。"
+      }
     },
     {
       "id": "eye",
@@ -208,7 +217,16 @@
       "chant": "視えたぞ。お前を縛る、その鎖が。",
       "victory": "見えたのは敵の姿ではない。存在を繋ぎ止める、赤い一本の線。",
       "hp": 150,
-      "attack": 18
+      "attack": 18,
+      "encounter": {
+        "style": "hidden",
+        "pattern": [
+          "approach",
+          "lunge",
+          "recover"
+        ],
+        "note": "見えない相手には当たらない。魔眼で3手の間捉え、飛びかかりをしのいで狙え。"
+      }
     },
     {
       "id": "word",
@@ -228,7 +246,18 @@
       "chant": "深淵より出でし黒き旋律よ——我が声に応えよ。",
       "victory": "最後の一節が響いた瞬間、教室の窓が夜空を映し直した。",
       "hp": 150,
-      "attack": 18
+      "attack": 18,
+      "encounter": {
+        "style": "silencer",
+        "pattern": [
+          "interrupt",
+          "windup",
+          "interrupt",
+          "slam",
+          "recover"
+        ],
+        "note": "短い技は静寂に呑まれる。防御で次の妨害を1回防ぎ、詠唱を重ね、強打の前に解き放て。"
+      }
     },
     {
       "id": "devour",

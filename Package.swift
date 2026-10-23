@@ -6,6 +6,6 @@ let package = Package(
     products: [.library(name: "ChronicleCore", targets: ["ChronicleCore"])],
     targets: [
         .target(name: "ChronicleCore", resources: [.process("Resources")]),
-        .testTarget(name: "ChronicleCoreTests", dependencies: ["ChronicleCore"])
+        .testTarget(name: "ChronicleCoreTests", dependencies: ["ChronicleCore"], resources: [.process("Fixtures")])
     ]
 )

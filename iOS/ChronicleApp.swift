@@ -17,6 +17,9 @@ struct ChronicleView: View {
     @AppStorage("chronicle.introduction.v4") private var introductionComplete = false
     @State private var showingTree = false
     @State private var impact = false
+    @State private var showingBattleHelp = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init() {
         let saved = UserDefaults.standard.data(forKey: "chronicle.prototype.v1")
@@ -27,19 +30,30 @@ struct ChronicleView: View {
         ZStack {
             (isPaper ? paper : Color(red: 0.03, green: 0.02, blue: 0.05)).ignoresSafeArea()
             if let catalog {
+                if isCombatScreen {
+                    GeometryReader { geometry in
+                        if dynamicTypeSize.isAccessibilitySize {
+                            ScrollView { battle(catalog, compact: true) }.padding(16)
+                        } else {
+                            battle(catalog, compact: geometry.size.height < 650)
+                                .padding(16).frame(maxHeight: .infinity)
+                        }
+                    }
+                } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         header
                         if !introductionComplete { introduction(catalog) }
                         else if let progress = game.trial, progress.stage != .combat { trialScene(progress, catalog: catalog) }
                         else if game.phase == .notebook { notebook(catalog) }
-                        else { battle(catalog) }
+                        else { battle(catalog, compact: false) }
                         if introductionComplete && game.phase != .notebook && game.trial?.stage != .reward {
                         Text(game.log).font(.footnote).lineSpacing(4).padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(crimson.opacity(0.1))
                         }
                     }.padding(20)
+                }
                 }
             } else if let error {
                 Text(error).foregroundStyle(crimson).padding()
@@ -60,12 +74,25 @@ struct ChronicleView: View {
         }
         .foregroundStyle(isPaper ? Color.black : paper)
         .task {
-            do { catalog = try Catalog.load() }
+            do { catalog = try Catalog.load(); game.resumeBattle() }
             catch { self.error = "設定データを読み込めませんでした：\(error.localizedDescription)" }
         }
         .onChange(of: game) { _, value in
             if let data = try? JSONEncoder().encode(value) {
                 UserDefaults.standard.set(data, forKey: "chronicle.prototype.v1")
+            }
+        }
+        .sheet(isPresented: $showingBattleHelp) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("ノートの余白").font(.title.bold()).fontDesign(.serif)
+                    Text(game.trial?.story.encounter?.note ?? "敵の予兆を読み、設定を使い分ける。")
+                    Text("右腕：硬直か見抜いた弱点へ龍顎。殻を壊す。\n魔眼：3手の間狙いを定める。飛びかかりに合わせれば見切れる。\n詠唱：最大3段階。防御で次の妨害を1回防ぎ、強打の前に解き放つ。")
+                    Text("集中：技の残数を1回復し、次の攻撃技を1.5倍。敵にも1手を渡す。\n防御：その手の被害を1/4にする。\n系統の切替は手番を消費しない。")
+                    Text("直前の一手").font(.headline)
+                    Text(game.log)
+                    Button("戦場に戻る") { showingBattleHelp = false }
+                }.padding(24)
             }
         }
         .confirmationDialog("ノートを最初から書き直しますか？", isPresented: $confirmingReset) {
@@ -75,6 +102,10 @@ struct ChronicleView: View {
                 showingTree = false
             }
         }
+    }
+
+    private var isCombatScreen: Bool {
+        introductionComplete && game.phase != .notebook && game.trial?.stage != .reward
     }
 
     private var isPaper: Bool {
@@ -200,50 +231,116 @@ struct ChronicleView: View {
         }.frame(maxWidth: .infinity)
     }
 
-    private func battle(_ catalog: Catalog) -> some View {
-        VStack(spacing: 18) {
+    private func battle(_ catalog: Catalog, compact: Bool) -> some View {
+        VStack(spacing: compact ? 7 : 10) {
             HStack {
                 Text(game.trial?.story.enemy ?? "名を失った残響").font(.headline)
                 Spacer()
-                Text("\(game.enemyHP) / \(game.enemyMaximum)").monospacedDigit()
+                Text("\((game.battle?.turn ?? 0) + (game.phase == .battle ? 1 : 0))手目").font(.caption.monospaced())
             }
             ProgressView(value: Double(game.enemyHP), total: Double(game.enemyMaximum)).tint(crimson)
-            monster.defeated(game.phase == .victory).frame(height: 200)
-                .offset(x: impact ? 12 : 0)
-            Text("存在強度 \(game.vitality) ／ 詠唱残数 \(game.charges)").font(.callout.monospaced())
+                .accessibilityLabel("敵の残り耐久 \(game.enemyHP) / \(game.enemyMaximum)")
+            if !compact {
+                TacticalEnemyView(style: game.enemyStyle, revealed: (game.battle?.revealed ?? 0) > 0,
+                                  armor: game.battle?.armor ?? 0, crimson: crimson)
+                    .frame(height: 110).offset(x: impact && !reduceMotion ? 8 : 0)
+            }
             if game.phase == .battle {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
-                    command("技を放つ ／ \(game.damage(catalog))", action: "skill", catalog: catalog)
-                    command("抑える ／ 次の技 ×1.5", action: "focus", catalog: catalog)
-                    command("殴る ／ 14", action: "punch", catalog: catalog)
-                    command("……逃げる？", action: "escape", catalog: catalog)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("次の敵行動：\(game.intent.title)").font(.headline)
+                    if game.selected.contains("eye3") {
+                        Text("その次：\(game.nextIntent.title)").font(.caption)
+                    }
+                    Text(battleStatus).font(.caption).foregroundStyle(crimson)
+                }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(crimson.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            }
+            HStack {
+                Text("存在 \(game.vitality)/100")
+                Spacer()
+                Text("技 \(game.charges)/3")
+                Text("詠唱 \(game.battle?.chanting ?? 0)/3")
+            }.font(.caption.monospaced()).accessibilityElement(children: .combine)
+            Text(game.log).font(.footnote).lineLimit(compact ? 2 : 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(game.log)
+            if game.phase == .battle {
+                Spacer(minLength: 0)
+                if game.availableArts.count > 1 {
+                    Picker("使う設定", selection: Binding(get: { game.battle?.art ?? .arm }, set: { game.chooseArt($0) })) {
+                        ForEach(game.availableArts, id: \.self) { art in Text(art.title).tag(art) }
+                    }.pickerStyle(.segmented)
                 }
+                let finisher: BattleAction = game.battle?.art == .chant && (game.battle?.chanting ?? 0) > 0 ? .release : .strike
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    battleButton(game.technique, catalog: catalog)
+                    battleButton(finisher, catalog: catalog)
+                    battleButton(.guard, catalog: catalog)
+                    battleButton(.focus, catalog: catalog)
+                }
+                HStack {
+                    Button("設定・直前の一手") { showingBattleHelp = true }
+                    Spacer()
+                    Menu("その他") {
+                        Button("殴る ／ 威力14") { takeAction(.punch, catalog: catalog) }
+                        Button("……逃げる？") { takeAction(.escape, catalog: catalog) }
+                    }
+                }.font(.caption).tint(crimson)
             } else {
-                Text(game.phase == .victory ? "次の力が、待っている。" : "まだ、設定が足りない。")
-                    .font(.title2).fontDesign(.serif)
-                Button(game.phase == .victory ? "次の頁へ ／ 新しい設定を解放" : "ノートへ戻って再挑戦") {
+                Text(game.phase == .victory ? "設定は、証明された。" : "次は、突破できる。")
+                    .font(.title2.bold()).fontDesign(.serif)
+                if game.phase == .defeat { Text(game.defeatAdvice).font(.footnote) }
+                primaryButton(game.phase == .victory ? "次の頁へ" : "設定を見直して再挑戦") {
                     game.returnToNotebook()
-                }.buttonStyle(.borderedProminent).tint(crimson)
+                }
             }
         }
     }
 
-    private func command(_ title: String, action: String, catalog: Catalog) -> some View {
-        Button {
-            if action == "skill", game.charges > 0 {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                showCutin(game.trial.map { rewardName($0.story, catalog: catalog) } ?? game.activeResonances(catalog).first?.name ?? "漆黒拳")
-            }
-            game.act(action, catalog: catalog)
-            withAnimation(.spring(response: 0.15, dampingFraction: 0.2)) { impact = true }
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(250))
-                withAnimation { impact = false }
-            }
-        } label: {
-            Text(title).font(.footnote.bold()).frame(maxWidth: .infinity, minHeight: 48)
-        }.buttonStyle(.bordered).tint(crimson)
-            .disabled(action == "skill" && game.charges == 0)
+    private var battleStatus: String {
+        guard let state = game.battle else { return "以前の戦闘を再開" }
+        var parts: [String] = []
+        if state.armor > 0 { parts.append("殻あり：硬直か継ぎ目を狙う") }
+        if game.enemyStyle == .hidden { parts.append(state.revealed > 0 ? "看破 あと\(state.revealed)手" : game.intent == .recover ? "硬直：今だけ狙える" : "不可視：技が当たらない") }
+        if game.enemyStyle == .silencer { parts.append("短い技は減衰：詠唱を解き放つ") }
+        if state.ward { parts.append("妨害への備え 1回") }
+        if game.focused { parts.append("次の技 ×1.5") }
+        return parts.isEmpty ? "予兆を読み、設定を使う。" : parts.joined(separator: " ／ ")
+    }
+
+    private func actionLabel(_ action: BattleAction, catalog: Catalog) -> (String, String) {
+        switch action {
+        case .breakSeal: return ("黒龍・殻を砕く", game.selected.contains("arm3") ? "硬直か看破中に有効" : "黒龍は未習得")
+        case .observe: return ("魔眼・見抜く", "看破3手／襲撃を見切る")
+        case .chant: return ("詠唱を重ねる", "最大3段階・妨害に注意")
+        case .release: return ("詠唱を解き放つ", "予測威力 \(game.predictedDamage(action, catalog: catalog))")
+        case .strike: return ("技を放つ", "予測威力 \(game.predictedDamage(action, catalog: catalog))")
+        case .guard: return ("防御・備える", "被害1/4／妨害を1回防ぐ")
+        case .focus: return ("集中", "技残数+1／次の技×1.5")
+        default: return ("殴る", "威力14")
+        }
+    }
+    private func battleButton(_ action: BattleAction, catalog: Catalog) -> some View {
+        let label = actionLabel(action, catalog: catalog)
+        return Button { takeAction(action, catalog: catalog) } label: {
+            VStack(spacing: 3) {
+                Text(label.0).font(.subheadline.bold())
+                Text(label.1).font(.caption2)
+            }.frame(maxWidth: .infinity, minHeight: 52)
+        }.buttonStyle(.bordered).tint(crimson).disabled(!game.canPerform(action))
+            .accessibilityLabel(label.0 + "。" + label.1)
+    }
+    private func takeAction(_ action: BattleAction, catalog: Catalog) {
+        let turn = game.battle?.turn
+        game.perform(action, catalog: catalog)
+        guard game.battle?.turn != turn else { return }
+        UIImpactFeedbackGenerator(style: action == .release || game.battle?.broken == true ? .heavy : .light).impactOccurred()
+        guard !reduceMotion else { return }
+        withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) { impact = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            withAnimation { impact = false }
+        }
     }
 
     private func showCutin(_ title: String) {
@@ -513,5 +610,39 @@ private struct SkillConstellation: View {
     private func point(row: Int, column: Int, width: CGFloat) -> CGPoint {
         CGPoint(x: row == 0 ? width / 2 : width * CGFloat(column * 2 + 1) / 6,
                 y: 48 + CGFloat(row) * 90)
+    }
+}
+
+
+/// Three readable silhouettes, without adding art downloads or animation timelines.
+private struct TacticalEnemyView: View {
+    let style: EnemyStyle
+    let revealed: Bool
+    let armor: Int
+    let crimson: Color
+    var body: some View {
+        ZStack {
+            switch style {
+            case .armored:
+                ForEach(0..<3) { index in
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(armor > 0 ? Color.gray : crimson, lineWidth: armor > 0 ? 10 : 2)
+                        .frame(width: CGFloat(70 + index * 30), height: CGFloat(55 + index * 14))
+                        .rotationEffect(.degrees(Double(index * 24)))
+                }
+                Text(armor > 0 ? "殻" : "砕").font(.title.bold()).fontDesign(.serif).foregroundStyle(crimson)
+            case .hidden:
+                Ellipse().stroke(crimson.opacity(revealed ? 1 : 0.25), style: StrokeStyle(lineWidth: 2, dash: revealed ? [] : [2, 8]))
+                    .frame(width: 105, height: 95)
+                Image(systemName: revealed ? "eye.fill" : "eye.slash").font(.system(size: 40)).foregroundStyle(crimson)
+            case .silencer:
+                ForEach(0..<5) { index in
+                    Capsule().fill(crimson.opacity(0.3 + Double(index) * 0.12))
+                        .frame(width: CGFloat(130 - index * 22), height: 5).offset(y: CGFloat(index * 17 - 34))
+                }
+            case .open:
+                MonsterView(crimson: crimson).scaleEffect(0.6)
+            }
+        }.frame(maxWidth: .infinity).accessibilityHidden(true)
     }
 }
