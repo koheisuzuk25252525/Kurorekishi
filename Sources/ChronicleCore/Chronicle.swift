@@ -58,6 +58,7 @@ public struct AscensionState: Codable, Equatable {
     public init() {}
 }
 public struct BattleState: Codable, Equatable {
+    public var proof: BattleProof?
     public var ascension: AscensionState?
     public var turn = 0
     public var armor = 0
@@ -92,9 +93,109 @@ public struct Trial: Codable, Identifiable, Equatable {
 public enum TrialStage: String, Codable { case approach, crisis, combat, reward }
 
 public struct TrialProgress: Codable, Equatable {
+    public var isReplay: Bool?
     public let story: Trial
     public var stage: TrialStage = .approach
     public let previousSelection: Set<String>
+}
+
+/// A proof is awarded for what actually happened, never for merely pressing a button.
+public enum Proof: String, Codable, CaseIterable {
+    case rupture, seam, evasion, foresight, protectedVerse, invocation
+    case devoured, stolenStrike, silence, rend, rewrite, trueName
+
+    public var title: String {
+        switch self {
+        case .rupture: return "黒龍顕現・封殻崩壊"
+        case .seam: return "魔眼 × 黒龍・死線穿孔"
+        case .evasion: return "魔眼開放・死角消失"
+        case .foresight: return "因果観測・結末拒絶"
+        case .protectedVerse: return "不滅詠唱・言霊継続"
+        case .invocation: return "長文詠唱・現実侵蝕"
+        case .devoured: return "神喰らい・敵意簒奪"
+        case .stolenStrike: return "簒奪反転・力の返還"
+        case .silence: return "終焉ノ詠唱・世界静止"
+        case .rend: return "終焉掌握・概念断裂"
+        case .rewrite: return "禁忌改稿・未来抹消"
+        case .trueName: return "真名解放・存在証明"
+        }
+    }
+    public var explanation: String {
+        switch self {
+        case .rupture: return "殻を破壊した。次の技から、防御が消える。"
+        case .seam: return "魔眼が暴いた継ぎ目へ黒龍を叩き込み、殻を砕いた。"
+        case .evasion: return "飛びかかりを見切った。被害0、弱点を3手看破。"
+        case .foresight: return "強打の未来を視た。被害0、弱点を3手看破。"
+        case .protectedVerse: return "先に張った備えが、詠唱の中断を防いだ。"
+        case .invocation: return "二節以上を重ねた言葉が、現実を貫いた。"
+        case .devoured: return "敵の一撃を吸収した。奪った力は、次の技に宿る。"
+        case .stolenStrike: return "喰らった力を技に乗せ、敵へ叩き返した。"
+        case .silence: return "終焉の言葉が敵の一手を消した。次の一手も封じる。"
+        case .rend: return "喰らった力を、防御も不可視も無視して叩き込んだ。"
+        case .rewrite: return "一戦一度の改稿。敵の行動を消し、弱点を刻んだ。"
+        case .trueName: return "三節が真名に変わった。全防御を貫き、存在を24回復。"
+        }
+    }
+    public var nodeID: String {
+        switch self {
+        case .rupture, .seam: return "arm3"
+        case .evasion: return "eye2"
+        case .foresight: return "eye3"
+        case .protectedVerse, .invocation: return "chant2"
+        case .devoured, .stolenStrike: return "arm4"
+        case .silence: return "chant3"
+        case .rend: return "arm5"
+        case .rewrite: return "eye4"
+        case .trueName: return "chant4"
+        }
+    }
+    fileprivate var priority: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+}
+public struct BattleProof: Codable, Equatable {
+    public var feats: Set<Proof> = []
+    public var last: Proof?
+    public init() {}
+    mutating func record(_ feat: Proof) {
+        feats.insert(feat)
+        if last == nil || feat.priority > last!.priority { last = feat }
+    }
+}
+public struct TrialRecord: Codable, Equatable {
+    public var victories: Int
+    public var bestTurns: Int
+    public var bestVitality: Int
+    public var mastered: Bool
+}
+
+public extension Trial {
+    var proofRequirements: Set<Proof> {
+        switch rewards.last {
+        case "arm3": return [.rupture]
+        case "eye2": return [.evasion]
+        case "chant2": return [.protectedVerse, .invocation]
+        case "arm4": return [.devoured, .stolenStrike]
+        case "eye3": return [.foresight]
+        case "chant3": return [.silence]
+        case "arm5": return [.rend]
+        case "eye4": return [.rewrite]
+        case "chant4": return [.trueName]
+        default: return []
+        }
+    }
+    var proofTitle: String {
+        switch rewards.last {
+        case "arm3": return "黒龍で殻を砕いて勝利"
+        case "eye2": return "飛びかかりを魔眼で見切って勝利"
+        case "chant2": return "妨害を防ぎ、二節以上を解き放って勝利"
+        case "arm4": return "敵の力を喰らい、技に乗せて勝利"
+        case "eye3": return "強打を因果の眼で見切って勝利"
+        case "chant3": return "終焉ノ詠唱で敵の行動を封じて勝利"
+        case "arm5": return "終焉を掴む手を放って勝利"
+        case "eye4": return "世界の理で敵の一手を消して勝利"
+        case "chant4": return "三節の真名を解放して勝利"
+        default: return "設定を使い、勝利せよ"
+        }
+    }
 }
 
 public struct Catalog: Codable {
@@ -119,6 +220,7 @@ public enum Phase: String, Codable { case notebook, battle, victory, defeat }
 
 public struct Game: Codable, Equatable {
     // Optional for compatibility with saves created before story trials.
+    public private(set) var records: [String: TrialRecord]?
     public private(set) var trial: TrialProgress?
     public private(set) var battle: BattleState?
     public private(set) var unlocked: Set<String> = []
@@ -153,6 +255,28 @@ public struct Game: Codable, Equatable {
         guard canBegin(story) else { return }
         trial = TrialProgress(story: story, previousSelection: selected)
         log = story.opening
+    }
+
+    /// Replays retain the episode's signature ability; other selected abilities may combine with it.
+    public func canReplay(_ story: Trial) -> Bool {
+        phase == .notebook && trial == nil && Set(story.rewards).isSubset(of: unlocked)
+    }
+    public mutating func beginReplay(_ story: Trial) {
+        guard canReplay(story) else { return }
+        trial = TrialProgress(isReplay: true, story: story, stage: .crisis, previousSelection: selected)
+        awakenTrial()
+    }
+    /// Retry the saved encounter, including its original rules, without replaying the cutscene.
+    public mutating func retryTrial() {
+        guard phase == .defeat, let progress = trial else { return }
+        selected = progress.previousSelection
+        phase = .notebook
+        trial?.stage = .crisis
+        awakenTrial()
+    }
+    public var proofAchieved: Bool {
+        guard let story = trial?.story, !story.proofRequirements.isEmpty else { return false }
+        return story.proofRequirements.isSubset(of: battle?.proof?.feats ?? [])
     }
 
     public mutating func confrontTrial() {
@@ -227,10 +351,10 @@ public struct Game: Codable, Equatable {
     }
     public mutating func returnToNotebook() {
         guard phase == .victory || phase == .defeat else { return }
-        if phase == .defeat, let progress = trial {
+        if (phase == .defeat || trial?.isReplay == true), let progress = trial {
             selected = progress.previousSelection
         }
-        if phase == .victory { day += 1 }
+        if phase == .victory && trial?.isReplay != true { day += 1 }
         trial = nil
         battle = nil
         phase = .notebook
@@ -351,6 +475,8 @@ public struct Game: Codable, Equatable {
         state.broken = false
         state.interrupted = false
         var ascension = state.ascension ?? AscensionState()
+        var proof = state.proof ?? BattleProof()
+        proof.last = nil
         var text: [String] = []
         var guarding = false
         var dodging = false
@@ -358,6 +484,10 @@ public struct Game: Codable, Equatable {
         switch action {
         case .strike, .punch, .release, .breakSeal, .rend, .trueName:
             if action != .punch { charges -= 1; focused = false }
+            if hit > 0 && action != .punch && ascension.absorbed > 0 { proof.record(.stolenStrike) }
+            if (action == .release || action == .trueName) && state.chanting >= 2 && hit > 0 {
+                proof.record(.invocation)
+            }
             if action == .release || action == .trueName {
                 if selected.contains("chant3") && state.chanting >= 2 {
                     ascension.silence = 2
@@ -370,33 +500,39 @@ public struct Game: Codable, Equatable {
                 state.armor = 0
                 state.revealed = 4
                 state.broken = true
+                proof.record(action == .rend ? .rend : .trueName)
                 text.append(action == .rend ? "終焉を掴む手——喰らった力で、防御という概念を引き裂く。" : "我が真名を刻め——防御を消し、存在を取り戻す。")
             }
             if action == .trueName { vitality = min(100, vitality + 24) }
             if action == .breakSeal && state.armor > 0 && (incoming == .recover || state.revealed > 0) {
                 state.armor = 0
                 state.broken = true
+                proof.record(.rupture)
+                if state.revealed > 0 { proof.record(.seam) }
                 text.append(state.revealed > 0 ? "魔眼が捉えた継ぎ目へ、黒龍を叩き込む。殻が砕けた。" : "硬直した殻へ黒龍の顎。防御を破壊した。")
             }
             enemyHP = max(0, enemyHP - hit)
             if hit == 0 { text.append("狙いが定まらない。魔眼で存在を捉えろ。") }
             else if state.armor > 0 { text.append("殻に弾かれ、\(hit)ダメージ。硬直か、見抜いた継ぎ目を狙え。") }
-            else if enemyStyle == .silencer && action != .release { text.append("短い技は静寂に呑まれた。\(hit)ダメージ。詠唱を重ねて解き放て。") }
+            else if enemyStyle == .silencer && ![.release, .trueName, .rend].contains(action) { text.append("短い技は静寂に呑まれた。\(hit)ダメージ。詠唱を重ねて解き放て。") }
             else { text.append("\(hit)ダメージ。\(action == .release ? "積み重ねた詠唱が、現実を裂いた。" : "設定を叩き込んだ。")") }
         case .observe:
             state.revealed = 4 // Includes this turn; three subsequent decisions remain.
             dodging = incoming == .lunge || (selected.contains("eye3") && incoming == .slam)
+            if dodging { proof.record(incoming == .slam ? .foresight : .evasion) }
             text.append(dodging ? "右目が、襲い来る軌道を視た。紙一重で見切る。" : "魔眼が弱点を捉えた。3手の間、狙いが定まり技の威力が2倍。")
         case .devour:
             charges -= 1
             let stolen = (trial?.story.attack ?? (12 + day * 2)) * ([.slam, .lunge].contains(incoming) ? 2 : 1)
             ascension.absorbed = min(60, stolen)
             nullifying = true
+            proof.record(.devoured)
             text.append("神喰らいの右腕——襲来する力を喰らった。被害0。次の技に\(ascension.absorbed)を宿す。")
         case .rewrite:
             ascension.rewriteUsed = true
             state.revealed = 4
             nullifying = true
+            proof.record(.rewrite)
             text.append("世界の理を視る眼——その結末は、誤字だ。敵の一手を白紙に戻し、弱点を刻んだ。")
         case .chant:
             state.chanting += 1
@@ -417,21 +553,31 @@ public struct Game: Codable, Equatable {
         state.revealed = max(0, state.revealed - 1)
         state.ascension = ascension
         if enemyHP == 0 {
+            state.proof = proof
             battle = state
             phase = .victory
             if let progress = trial {
                 unlocked.formUnion(progress.story.rewards)
                 trial?.stage = .reward
+                var entries = records ?? [:]
+                let old = entries[progress.story.id]
+                entries[progress.story.id] = TrialRecord(
+                    victories: (old?.victories ?? 0) + 1,
+                    bestTurns: min(old?.bestTurns ?? state.turn, state.turn),
+                    bestVitality: max(old?.bestVitality ?? vitality, vitality),
+                    mastered: (old?.mastered ?? false) || proofAchieved)
+                records = entries
             }
-            let reward = 3 + day
+            let reward = trial?.isReplay == true ? 0 : 3 + day
             ink += reward
-            log = text.joined(separator: "\n") + "\n設定を証明した。記述点 +\(reward)。"
+            log = text.joined(separator: "\n") + (trial?.isReplay == true ? "\n追憶を越えた。戦績をノートに刻んだ。" : "\n危機を突破した。記述点 +\(reward)。")
             return
         }
         let attack = trial?.story.attack ?? (12 + day * 2)
         var received = 0
         if nullifying || ascension.silence > 0 {
             if ascension.silence > 0 {
+                if action == .release || action == .trueName { proof.record(.silence) }
                 ascension.silence -= 1
                 text.append("静寂が、敵の行動を消した。")
             }
@@ -447,6 +593,7 @@ public struct Game: Codable, Equatable {
             if state.chanting > 0 {
                 if state.ward {
                     state.ward = false
+                    proof.record(.protectedVerse)
                     text.append("備えが妨害を弾いた。詠唱は途切れない。")
                 } else {
                     state.chanting = 0
@@ -460,6 +607,7 @@ public struct Game: Codable, Equatable {
         if guarding { received /= 4 }
         vitality = max(0, vitality - received)
         state.lastReceived = received
+        state.proof = proof
         if received > 0 { text.append("存在強度 -\(received)。") }
         battle = state
         if vitality == 0 {

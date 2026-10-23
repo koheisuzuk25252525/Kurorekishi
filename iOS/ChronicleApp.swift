@@ -16,6 +16,7 @@ struct ChronicleView: View {
     @State private var confirmingReset = false
     @AppStorage("chronicle.introduction.v4") private var introductionComplete = false
     @State private var showingTree = false
+    @State private var showingMemories = false
     @State private var impact = false
     @State private var showingBattleHelp = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -31,12 +32,15 @@ struct ChronicleView: View {
             (isPaper ? paper : Color(red: 0.03, green: 0.02, blue: 0.05)).ignoresSafeArea()
             if let catalog {
                 if isCombatScreen {
-                    GeometryReader { geometry in
+                    GeometryReader { _ in
                         if dynamicTypeSize.isAccessibilitySize {
                             ScrollView { battle(catalog, compact: true) }.padding(16)
                         } else {
-                            battle(catalog, compact: geometry.size.height < 650)
-                                .padding(16).frame(maxHeight: .infinity)
+                            ViewThatFits(in: .vertical) {
+                                battle(catalog, compact: false).fixedSize(horizontal: false, vertical: true)
+                                battle(catalog, compact: true).fixedSize(horizontal: false, vertical: true)
+                                ScrollView { battle(catalog, compact: true) }
+                            }.padding(16).frame(maxHeight: .infinity)
                         }
                     }
                 } else {
@@ -90,6 +94,10 @@ struct ChronicleView: View {
                     Text("右腕：硬直か見抜いた弱点へ龍顎。殻を壊す。\n魔眼：3手の間狙いを定める。飛びかかりに合わせれば見切れる。\n詠唱：最大3段階。防御で次の妨害を1回防ぎ、強打の前に解き放つ。")
                     Text("集中：技の残数を1回復し、次の攻撃技を1.5倍。敵にも1手を渡す。\n防御：その手の被害を1/4にする。\n系統の切替は手番を消費しない。")
                     Text("上位解放：神喰らいは攻撃の手に現れる。喰らった力があれば終焉を掴める。因果の眼は強打も見切る。終焉ノ詠唱は二節以上で二手を封じ、真名解放は三節で発動する。")
+                    if let story = game.trial?.story {
+                        Text("設定証明：" + story.proofTitle).font(.headline)
+                        Text("勝利だけで能力は習得できる。証明は任意の挑戦で、追憶戦でも達成できる。")
+                    }
                     Text("直前の一手").font(.headline)
                     Text(game.log)
                     Button("戦場に戻る") { showingBattleHelp = false }
@@ -143,8 +151,8 @@ struct ChronicleView: View {
 
     private func notebook(_ catalog: Catalog) -> some View {
         VStack(spacing: 20) {
-            Text("力は、まだ始まったばかりだ。").font(.title2.bold()).fontDesign(.serif)
-            Text("次の頁は、新しい力を要求している。").font(.footnote)
+            Text(catalog.trials.contains(where: { game.canBegin($0) }) ? "力は、まだ始まったばかりだ。" : "次は、その力を使いこなせ。").font(.title2.bold()).fontDesign(.serif)
+            Text("昔の自分が書いた一行で、今日の絶望を覆す。").font(.footnote)
             let available = catalog.trials.filter { game.canBegin($0) }
             ForEach(available) { story in
                 VStack(alignment: .leading, spacing: 10) {
@@ -162,8 +170,10 @@ struct ChronicleView: View {
                 Text("世界が否定した全てを、このノートは肯定した。").font(.footnote)
             }
             Text("禁書・終焉ノ能力系譜").font(.title2.bold()).fontDesign(.serif)
-            SkillConstellation(catalog: catalog, learned: game.unlocked, highlighted: [], crimson: crimson)
+            SkillConstellation(catalog: catalog, learned: game.unlocked, highlighted: [], crimson: crimson,
+                               proven: provenAbilities(catalog))
                 .frame(height: 430).background(Color.black, in: RoundedRectangle(cornerRadius: 18))
+            memories(catalog)
             Button(showingTree ? "設定を閉じる" : "習得済みの設定を組み替える") { showingTree.toggle() }
                 .font(.footnote).tint(crimson)
             if showingTree {
@@ -184,6 +194,10 @@ struct ChronicleView: View {
         }
     }
 
+    private func provenAbilities(_ catalog: Catalog) -> Set<String> {
+        Set(catalog.trials.filter { game.records?[$0.id]?.mastered == true }.flatMap(\.rewards))
+    }
+
     private func rewardName(_ story: Trial, catalog: Catalog) -> String {
         story.rewards.compactMap { id in catalog.nodes.first { $0.id == id }?.name }.last ?? "新しい力"
     }
@@ -192,13 +206,22 @@ struct ChronicleView: View {
         let story = progress.story
         return VStack(spacing: 20) {
             Text(story.place).font(.caption).foregroundStyle(crimson)
-            Text(progress.stage == .reward ? "新たな系譜、解放。" : story.title)
+            Text(progress.stage == .reward ? (progress.isReplay == true ? "追憶を越えた。" : "新たな系譜、解放。") : story.title)
                 .font(.title2.bold()).fontDesign(.serif).multilineTextAlignment(.center)
             if progress.stage == .reward {
+                if let node = catalog.nodes.first(where: { $0.id == story.rewards.last }) {
+                    Text(node.reading ?? "").font(.caption).foregroundStyle(crimson)
+                    Text(node.name).font(.title.bold()).fontDesign(.serif)
+                    Text("「\(node.verse ?? node.detail)」").font(.subheadline).fontDesign(.serif)
+                        .multilineTextAlignment(.center)
+                }
+                proofResult(story)
+                primaryButton("この力で、次の頁へ") { game.returnToNotebook() }
                 SkillConstellation(catalog: catalog, learned: game.unlocked,
-                                   highlighted: Set(story.rewards), crimson: crimson)
+                                   highlighted: progress.isReplay == true ? [] : Set(story.rewards), crimson: crimson,
+                                   proven: provenAbilities(catalog))
                     .frame(height: 430).background(Color.black, in: RoundedRectangle(cornerRadius: 18))
-                Text("《\(rewardName(story, catalog: catalog))》習得").font(.title3.bold())
+                Text(progress.isReplay == true ? "習得した設定が、再び現実になった。" : "《\(rewardName(story, catalog: catalog))》習得").font(.title3.bold())
                 Text(story.victory).font(.footnote).multilineTextAlignment(.center)
                 if let resonance = game.activeResonances(catalog).first(where: {
                     !Set($0.requires).isDisjoint(with: story.rewards)
@@ -206,9 +229,10 @@ struct ChronicleView: View {
                     Text("設定が共鳴した——《\(resonance.name)》 ×\(resonance.multiplier, specifier: "%.1f")")
                         .font(.footnote.bold()).foregroundStyle(crimson)
                 }
-                primaryButton("さらに先の頁へ") { game.returnToNotebook() }
             } else {
-                monster.frame(height: 190)
+                TacticalEnemyView(style: story.encounter?.style ?? .open, revealed: false,
+                                  armor: story.encounter?.style == .armored ? 2 : 0, crimson: crimson)
+                    .frame(height: 150)
                     .scaleEffect(progress.stage == .crisis ? 1.15 : 1)
                 if progress.stage == .crisis {
                     Text("今の能力では、届かない。").font(.caption.bold()).foregroundStyle(crimson)
@@ -222,6 +246,9 @@ struct ChronicleView: View {
                     }
                 } else {
                     Text("ノートに、次の一行を。").font(.caption).foregroundStyle(crimson)
+                    Text(story.proofTitle).font(.footnote.bold())
+                    Text("勝てば習得。設定を使いこなせば、証明も刻まれる。")
+                        .font(.caption).foregroundStyle(paper.opacity(0.7))
                     primaryButton(story.vow) {
                         game.awakenTrial()
                         showCutin(rewardName(story, catalog: catalog))
@@ -263,9 +290,11 @@ struct ChronicleView: View {
                 Text("技 \(game.charges)/3")
                 Text("詠唱 \(game.battle?.chanting ?? 0)/3")
             }.font(.caption.monospaced()).accessibilityElement(children: .combine)
-            Text(game.log).font(.footnote).lineLimit(compact ? 2 : 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel(game.log)
+            if game.phase == .battle { proofPanel(catalog, compact: compact) }
+            if game.phase == .battle, let story = game.trial?.story {
+                Text(game.proofAchieved ? "証明条件成立——このまま勝利せよ" : "証明：\(story.proofTitle)")
+                    .font(.caption2).foregroundStyle(game.proofAchieved ? Color.yellow : paper)
+            }
             if game.phase == .battle {
                 Spacer(minLength: 0)
                 if game.availableArts.count > 1 {
@@ -291,9 +320,102 @@ struct ChronicleView: View {
             } else {
                 Text(game.phase == .victory ? "設定は、証明された。" : "次は、突破できる。")
                     .font(.title2.bold()).fontDesign(.serif)
-                if game.phase == .defeat { Text(game.defeatAdvice).font(.footnote) }
+                if game.phase == .defeat {
+                    Text(game.defeatAdvice).font(.footnote)
+                    if game.trial != nil {
+                        primaryButton("この未来を、書き直す ／ 再戦") { game.retryTrial() }
+                        Button("ノートで設定を見直す") { game.returnToNotebook() }.tint(crimson)
+                    }
+                }
+                if game.phase == .victory || game.trial == nil {
                 primaryButton(game.phase == .victory ? "次の頁へ" : "設定を見直して再挑戦") {
                     game.returnToNotebook()
+                }
+                }
+            }
+        }
+    }
+
+    private func proofPanel(_ catalog: Catalog, compact: Bool) -> some View {
+        let proof = game.battle?.proof?.last
+        let interrupted = game.battle?.interrupted == true
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(proof?.title ?? (interrupted ? "詠唱断絶——言葉が、消された。" : "余白の設定が、現実を変える。"))
+                .font(.subheadline.bold()).fontDesign(.serif).foregroundStyle(proof == nil ? paper : .yellow)
+            if let proof {
+                if !compact, let verse = catalog.nodes.first(where: { $0.id == proof.nodeID })?.verse {
+                    Text("「\(verse)」").font(.caption).fontDesign(.serif)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                }
+                Text(proof.explanation).font(.caption)
+            } else {
+                Text(interrupted ? "詠唱が0に戻った。先に防御すると、次の妨害を一度だけ防げる。" : (game.trial?.story.encounter?.note ?? "予兆を読んで、次の一手を決める。"))
+                    .font(.caption)
+            }
+            if let state = game.battle, state.turn > 0 {
+                Text("直前の一手：与えた傷 \(state.lastDamage) ／ 受けた傷 \(state.lastReceived)")
+                    .font(.caption2.monospaced()).foregroundStyle(paper.opacity(0.7))
+            }
+        }.padding(10).frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
+            .background((proof == nil ? crimson : Color.yellow).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityElement(children: .combine)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: proof)
+    }
+
+    private func proofResult(_ story: Trial) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(game.proofAchieved ? "——設定証明・完遂——" : "——生還。その先に、極致がある——")
+                .font(.headline).fontDesign(.serif).foregroundStyle(game.proofAchieved ? Color.yellow : crimson)
+            Text(story.proofTitle).font(.footnote)
+            if let proof = game.battle?.proof?.last {
+                Text(proof.explanation).font(.footnote)
+            }
+            HStack {
+                Text("\(game.battle?.turn ?? 0)手で突破")
+                Spacer()
+                Text("残存存在 \(game.vitality)")
+            }.font(.caption.monospaced())
+            if !game.proofAchieved {
+                Text("目標には、追憶戦でいつでも挑める。")
+                    .font(.caption).foregroundStyle(paper.opacity(0.7))
+            }
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(crimson.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func memories(_ catalog: Catalog) -> some View {
+        let stories = catalog.trials.filter { Set($0.rewards).isSubset(of: game.unlocked) }
+        return VStack(alignment: .leading, spacing: 12) {
+            if !stories.isEmpty {
+                Button {
+                    showingMemories.toggle()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("追憶戦・かつての絶望を越えろ").font(.headline).fontDesign(.serif)
+                            Text("設定証明 \(stories.filter { game.records?[$0.id]?.mastered == true }.count) / \(catalog.trials.count)")
+                                .font(.caption)
+                        }
+                        Spacer()
+                        Image(systemName: showingMemories ? "chevron.up" : "chevron.down")
+                    }.frame(minHeight: 48)
+                }.tint(crimson)
+                if showingMemories {
+                    Text("事件の力に、習得した別系統を重ねて挑める。目標達成と最少手数をノートに刻もう。")
+                        .font(.footnote)
+                    ForEach(stories) { story in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(story.enemy).font(.headline)
+                            Text(story.proofTitle).font(.footnote)
+                            if let record = game.records?[story.id] {
+                                Text("\(record.mastered ? "設定証明済" : "証明に挑戦") ／ 最少\(record.bestTurns)手 ／ 最高存在\(record.bestVitality)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Button("この絶望を、もう一度") { game.beginReplay(story) }
+                                .buttonStyle(.bordered).tint(crimson)
+                        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(crimson.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                    }
                 }
             }
         }
@@ -345,7 +467,7 @@ struct ChronicleView: View {
         let turn = game.battle?.turn
         game.perform(action, catalog: catalog)
         guard game.battle?.turn != turn else { return }
-        UIImpactFeedbackGenerator(style: [.release, .trueName, .rend, .devour, .rewrite].contains(action) || game.battle?.broken == true ? .heavy : .light).impactOccurred()
+        UIImpactFeedbackGenerator(style: game.battle?.proof?.last != nil || [.release, .trueName, .rend, .devour, .rewrite].contains(action) || game.battle?.broken == true ? .heavy : .light).impactOccurred()
         guard !reduceMotion else { return }
         withAnimation(.spring(response: 0.15, dampingFraction: 0.5)) { impact = true }
         Task { @MainActor in
@@ -553,6 +675,7 @@ private struct SkillConstellation: View {
     let learned: Set<String>
     let highlighted: Set<String>
     let crimson: Color
+    var proven: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealed = false
     @State private var inspected: Node?
@@ -607,6 +730,7 @@ private struct SkillConstellation: View {
                                     .foregroundStyle(active ? Color.white : Color.white.opacity(0.55))
                                     .multilineTextAlignment(.center).frame(width: width / 3 - 5)
                                 if newly { Text("封印解除").font(.system(size: 9, weight: .bold)).foregroundStyle(crimson) }
+                                else if proven.contains(id) { Text("設定証明済").font(.system(size: 9, weight: .bold)).foregroundStyle(gold) }
                                 else if row == 3 { Text("終式").font(.system(size: 9, weight: .bold)).foregroundStyle(gold) }
                             }
                             }.buttonStyle(.plain)
@@ -641,6 +765,7 @@ private struct SkillConstellation: View {
                     if let story = catalog.trials.first(where: { $0.rewards.contains(node.id) }) {
                         Text("解放事件：\(story.title)").font(.subheadline.bold())
                         Text(story.place).font(.caption)
+                        Text((proven.contains(node.id) ? "証明済：" : "設定証明：") + story.proofTitle).font(.footnote)
                     } else { Text("最初の覚醒で習得する、全ての起点。").font(.footnote) }
                     let children = catalog.abilities.filter { child in
                         child.requires.contains(node.id) || catalog.trials.contains { story in
