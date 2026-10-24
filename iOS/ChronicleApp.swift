@@ -12,9 +12,12 @@ struct ChronicleView: View {
     @State private var game: Game
     @State private var catalog: Catalog?
     @State private var error: String?
-    @State private var cutin: String?
+    private let persistence: SessionPersistence
+    @State private var awakeningNode: Node?
+    @State private var showingPlaytest = false
+    @Environment(\.dismiss) private var dismiss
     @State private var confirmingReset = false
-    @AppStorage("chronicle.introduction.v4") private var introductionComplete = false
+    @State private var introductionComplete: Bool
     @State private var showingTree = false
     @State private var showingMemories = false
     @State private var impact = false
@@ -22,9 +25,11 @@ struct ChronicleView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init() {
-        let saved = UserDefaults.standard.data(forKey: "chronicle.prototype.v1")
-        _game = State(initialValue: saved.flatMap { try? JSONDecoder().decode(Game.self, from: $0) } ?? Game())
+    init(playtest: Bool = false) {
+        let store = SessionPersistence(isPlaytest: playtest)
+        persistence = store
+        _game = State(initialValue: store.loadGame())
+        _introductionComplete = State(initialValue: store.loadIntroduction())
     }
 
     var body: some View {
@@ -62,28 +67,30 @@ struct ChronicleView: View {
             } else if let error {
                 Text(error).foregroundStyle(crimson).padding()
             } else { ProgressView() }
-            if let cutin {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    Text(cutin.contains("眼") ? "視" : cutin.contains("詠") || cutin.contains("真名") ? "言" : "龍").font(.system(size: 250, weight: .black, design: .serif))
-                        .foregroundStyle(crimson.opacity(0.3))
-                    VStack(spacing: 30) {
-                        Text("——書いた通りに").font(.title3)
-                        Text(cutin).font(.system(size: 32, weight: .black, design: .serif))
-                            .multilineTextAlignment(.center).foregroundStyle(crimson)
-                        Text("——現実になる").font(.title3)
-                    }.padding()
-                }.foregroundStyle(.white).allowsHitTesting(true)
-            }
         }
+
         .foregroundStyle(isPaper ? Color.black : paper)
         .task {
             do { catalog = try Catalog.load(); game.resumeBattle() }
             catch { self.error = "設定データを読み込めませんでした：\(error.localizedDescription)" }
         }
-        .onChange(of: game) { _, value in
-            if let data = try? JSONEncoder().encode(value) {
-                UserDefaults.standard.set(data, forKey: "chronicle.prototype.v1")
+        .onChange(of: game) { _, value in persistence.save(value) }
+        .onChange(of: introductionComplete) { _, value in persistence.saveIntroduction(value) }
+        .fullScreenCover(isPresented: $showingPlaytest) { ChronicleView(playtest: true) }
+        .fullScreenCover(item: $awakeningNode) { node in
+            AwakeningRitual(node: node, onManifest: {
+                game.awakenTrial()
+                awakeningNode = nil
+            }, onCancel: { awakeningNode = nil })
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if persistence.isPlaytest {
+                HStack {
+                    Text("試遊中・進行は保存されません").font(.caption)
+                    Spacer()
+                    Button("試遊を終える") { dismiss() }.font(.caption.bold())
+                        .frame(minHeight: 44)
+                }.padding(.horizontal, 16).foregroundStyle(.white).background(Color.black)
             }
         }
         .sheet(isPresented: $showingBattleHelp) {
@@ -126,6 +133,9 @@ struct ChronicleView: View {
             HStack {
                 Text("第\(game.day)頁 ／ \(isPaper ? "記述" : "現実")")
                 Spacer()
+                if !persistence.isPlaytest {
+                    Button("覚醒から試遊") { showingPlaytest = true }.font(.caption)
+                }
                 Button("書き直す") { confirmingReset = true }.font(.caption)
             }.font(.caption.monospaced()).foregroundStyle(crimson)
             Text("黒歴史ノート").font(.system(size: 34, weight: .black, design: .serif))
@@ -250,9 +260,7 @@ struct ChronicleView: View {
                     Text("勝てば習得。設定を使いこなせば、証明も刻まれる。")
                         .font(.caption).foregroundStyle(paper.opacity(0.7))
                     primaryButton(story.vow) {
-                        game.awakenTrial()
-                        showCutin(rewardName(story, catalog: catalog))
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        awakeningNode = catalog.nodes.first { $0.id == story.rewards.last }
                     }
                 }
                 Button("一度、ノートに戻る") { game.abandonTrial() }.font(.caption).tint(crimson)
@@ -313,6 +321,9 @@ struct ChronicleView: View {
                     Button("設定・直前の一手") { showingBattleHelp = true }
                     Spacer()
                     Menu("その他") {
+                        if !persistence.isPlaytest {
+                            Button("覚醒から試遊（セーブはそのまま）") { showingPlaytest = true }
+                        }
                         Button("殴る ／ 威力14") { takeAction(.punch, catalog: catalog) }
                         Button("……逃げる？") { takeAction(.escape, catalog: catalog) }
                     }
@@ -476,13 +487,7 @@ struct ChronicleView: View {
         }
     }
 
-    private func showCutin(_ title: String) {
-        cutin = title
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.8))
-            cutin = nil
-        }
-    }
+
 }
 
 
@@ -521,7 +526,7 @@ private struct MonsterView: View {
 
 
 private struct AwakeningIntroduction: View {
-    enum Beat: Int { case encounter, pressure, notebook, awakening, ready, impact, unlock }
+    enum Beat: Int { case encounter, pressure, notebook, awakening, impact, unlock }
     let catalog: Catalog
     let crimson: Color
     let onUnlock: () -> Void
@@ -543,8 +548,8 @@ private struct AwakeningIntroduction: View {
                         Rectangle().fill(crimson).frame(height: 2)
                         Text("——小五の夜に書いた、一行。").font(.caption)
                     }.padding(24).foregroundStyle(Color(red: 0.95, green: 0.92, blue: 0.84))
-                } else if beat == .awakening || beat == .ready {
-                    awakeningArt
+                } else if beat == .awakening {
+                    Text("——封印の向こうへ——").foregroundStyle(crimson)
                 } else if beat == .unlock {
                     firstBranch
                 } else {
@@ -572,8 +577,7 @@ private struct AwakeningIntroduction: View {
                 Text("（……書いた通りになるなら、今しかない）")
                     .font(.caption).foregroundStyle(.secondary)
                 action("……封印を、解いてみる") { beat = .awakening }
-            } else if beat == .ready {
-                action("漆黒拳を放つ") { beat = .impact }
+
             } else if beat == .unlock {
                 action("次の力を、選ぶ", perform: onContinue)
             } else {
@@ -583,6 +587,14 @@ private struct AwakeningIntroduction: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .fullScreenCover(isPresented: Binding(
+            get: { beat == .awakening },
+            set: { if !$0 && beat == .awakening { beat = .notebook } }
+        )) {
+            if let node = catalog.nodes.first(where: { $0.id == "arm2" }) {
+                AwakeningRitual(node: node, onManifest: { beat = .impact }, onCancel: { beat = .notebook })
+            }
+        }
         .task(id: beat) {
             do {
                 switch beat {
@@ -591,10 +603,6 @@ private struct AwakeningIntroduction: View {
                     withAnimation(reduceMotion ? nil : .easeIn(duration: 2.2)) { approaching = true }
                     try await Task.sleep(for: .seconds(2.4))
                     beat = .notebook
-                case .awakening:
-                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                    try await Task.sleep(for: .seconds(2.6))
-                    beat = .ready
                 case .impact:
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     try await Task.sleep(for: .seconds(1.6))
@@ -614,7 +622,6 @@ private struct AwakeningIntroduction: View {
         case .pressure: return "効かない。\nもう、目の前にいる。"
         case .notebook: return "開いたのは、あのページ。"
         case .awakening: return "——右腕が、灼ける。"
-        case .ready: return "本当に、宿った。"
         case .impact: return "……やれやれ。"
         case .unlock: return "最初の能力を、手に入れた。"
         }
@@ -626,35 +633,9 @@ private struct AwakeningIntroduction: View {
         case .pressure: return "背後は壁。\n握りしめたノートだけが、残っている。"
         case .notebook: return "……こんな設定が、今さら。"
         case .awakening: return "包帯の下を、黒い紋章が走る。"
-        case .ready: return "（……ずっと、待ってた）"
         case .impact: return "闇に還れ。"
         case .unlock: return "この一撃は、始まりに過ぎない。\nノートの奥には、まだ幾つもの力が眠っている。"
         }
-    }
-
-    private var awakeningArt: some View {
-        ZStack {
-            ForEach(0..<9) { index in
-                Rectangle().fill(crimson.opacity(0.3))
-                    .frame(width: 2, height: 260)
-                    .rotationEffect(.degrees(Double(index) * 40))
-            }
-            // A forearm and unravelling seals, rather than a text-only reward.
-            RoundedRectangle(cornerRadius: 22).fill(Color(red: 0.12, green: 0.06, blue: 0.1))
-                .frame(width: 64, height: 180).rotationEffect(.degrees(25))
-                .overlay {
-                    ForEach(0..<5) { index in
-                        Rectangle().fill(beat == .ready ? crimson : .white.opacity(0.7))
-                            .frame(width: beat == .ready ? 110 : 76, height: 5)
-                            .rotationEffect(.degrees(beat == .ready ? Double(index * 17) : 25))
-                            .offset(x: beat == .ready ? CGFloat(index * 10 - 20) : 0,
-                                    y: CGFloat(index * 23 - 48))
-                    }
-                }
-            Text("解").font(.system(size: 100, weight: .black, design: .serif))
-                .foregroundStyle(crimson).shadow(color: crimson.opacity(0.7), radius: 18)
-        }.animation(reduceMotion ? nil : .easeOut(duration: 0.8), value: beat)
-        .accessibilityLabel("前腕の包帯がほどけ、黒い紋章が現れる")
     }
 
     private var firstBranch: some View {
@@ -668,6 +649,150 @@ private struct AwakeningIntroduction: View {
     }
 }
 
+
+/// No timed input or mandatory wait: the player's gesture turns handwriting into power.
+private struct AwakeningRitual: View {
+    private enum Step { case memory, seal, awakened }
+    let node: Node
+    let onManifest: () -> Void
+    let onCancel: () -> Void
+    @State private var step = Step.memory
+    @State private var pull: CGFloat = 0
+    @State private var completed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var tint: Color {
+        node.route == "魔眼" ? Color(red: 0.43, green: 0.63, blue: 1) :
+        node.route == "詠唱" ? Color(red: 0.91, green: 0.72, blue: 0.34) :
+        Color(red: 0.9, green: 0.16, blue: 0.25)
+    }
+    private var glyph: String { node.route == "魔眼" ? "視" : node.route == "詠唱" ? "唱" : "解" }
+    private var gestureTitle: String {
+        node.route == "魔眼" ? "禁じられた視界を開く" :
+        node.route == "詠唱" ? "消された詠唱をなぞる" : "右腕の封印を引き裂く"
+    }
+    private var awakeningLine: String {
+        node.route == "魔眼" ? "見えなかったはずの世界が、視える。" :
+        node.route == "詠唱" ? "書いた言葉を、世界が復唱している。" : "右腕の奥で、何かが俺の名に応えた。"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                HStack {
+                    Text(step == .awakened ? "記述、現実へ侵蝕。" : "忘れたふりをしていた頁。")
+                        .font(.caption.monospaced())
+                    Spacer()
+                    Button("閉じる", action: onCancel).frame(minHeight: 44)
+                }.foregroundStyle(tint)
+                Text(step == .awakened ? "この力は、俺が考えた。" : "……あれは、ただの設定だった。")
+                    .font(.system(.title2, design: .serif, weight: .black))
+                    .multilineTextAlignment(.center)
+                notebookPage
+                if step == .seal {
+                    Text("信じるだけじゃない。自分の手で、解け。")
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    sealControl
+                    Button(gestureTitle) { breakSeal() }
+                        .buttonStyle(.bordered).tint(tint).frame(minHeight: 44)
+                        .accessibilityHint("スライド操作と同じ効果で封印を解除します")
+                } else if step == .memory {
+                    Text("昔の自分は、本気でこの力を信じていた。\nなら今だけは、俺も信じてやる。")
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    ritualButton("ああ。これは、俺の設定だ。") {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) { step = .seal }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                } else {
+                    Text(awakeningLine).font(.subheadline).multilineTextAlignment(.center)
+                    Text(node.reading ?? "").font(.caption).foregroundStyle(tint)
+                    Text(node.name).font(.system(.largeTitle, design: .serif, weight: .black))
+                        .multilineTextAlignment(.center)
+                    Text(node.effect ?? node.detail).font(.footnote).foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                    ritualButton("この力を、解き放つ") {
+                        guard !completed else { return }
+                        completed = true
+                        onManifest()
+                    }.disabled(completed)
+                }
+            }.padding(24).frame(maxWidth: 560).frame(maxWidth: .infinity)
+        }
+        .background(Color(red: 0.025, green: 0.02, blue: 0.04).ignoresSafeArea())
+        .foregroundStyle(.white)
+        .interactiveDismissDisabled()
+    }
+
+    private var notebookPage: some View {
+        VStack(spacing: 16) {
+            Text(step == .awakened ? "——ノートは、嘘をつかなかった——" : "小さな字で、こう書いてある。")
+                .font(.caption).foregroundStyle(step == .awakened ? tint : .black.opacity(0.6))
+            ZStack {
+                Circle().stroke(tint.opacity(step == .awakened ? 0.8 : 0.18), lineWidth: 2)
+                Circle().trim(from: 0.08, to: 0.92).stroke(tint, style: StrokeStyle(lineWidth: 1, dash: [2, 7]))
+                    .padding(12).rotationEffect(.degrees(step == .awakened && !reduceMotion ? 70 : 0))
+                Text(glyph).font(.system(size: 74, weight: .black, design: .serif))
+                    .foregroundStyle(tint.opacity(step == .awakened ? 1 : 0.25))
+                if step != .awakened {
+                    ForEach(0..<3) { index in
+                        Rectangle().fill(Color.black.opacity(0.8))
+                            .frame(height: 5).rotationEffect(.degrees(-20))
+                            .offset(x: pull * CGFloat(index + 1) * 8, y: CGFloat(index - 1) * 26)
+                    }
+                }
+            }.frame(width: 150, height: 150)
+                .scaleEffect(step == .awakened && !reduceMotion ? 1.08 : 1)
+                .shadow(color: tint.opacity(step == .awakened ? 0.5 : 0), radius: 20)
+                .accessibilityHidden(true)
+            Text("「\(node.verse ?? node.detail)」")
+                .font(.system(.title3, design: .serif, weight: .bold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(step == .awakened ? .white : .black)
+                .shadow(color: step == .awakened ? tint : .clear, radius: 8)
+            Rectangle().fill(tint.opacity(0.6)).frame(height: 1)
+        }.padding(22).frame(maxWidth: .infinity)
+            .background(step == .awakened ? Color(red: 0.08, green: 0.04, blue: 0.12) : Color(red: 0.95, green: 0.92, blue: 0.84),
+                        in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(step == .awakened ? 1 : 0.2), lineWidth: 2))
+    }
+
+    private var sealControl: some View {
+        VStack(spacing: 8) {
+            Text("右へなぞる、または下のボタンで解放").font(.caption)
+            GeometryReader { geometry in
+                let travel = max(1, geometry.size.width - 64)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(tint.opacity(0.12))
+                    Capsule().fill(tint.opacity(0.3)).frame(width: 56 + pull * travel)
+                    Text("封　印　解　除").font(.caption.bold()).frame(maxWidth: .infinity)
+                    Circle().fill(tint).frame(width: 48, height: 48)
+                        .overlay(Image(systemName: "arrow.right").foregroundStyle(.black))
+                        .offset(x: 8 + pull * travel)
+                }
+                .contentShape(Capsule())
+                .gesture(DragGesture(minimumDistance: 8)
+                    .onChanged { value in pull = min(1, max(0, value.translation.width / travel)) }
+                    .onEnded { _ in
+                        if pull >= 0.8 { breakSeal() }
+                        else { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { pull = 0 } }
+                    })
+            }.frame(height: 56).accessibilityHidden(true)
+        }
+    }
+    private func breakSeal() {
+        guard step == .seal else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.4)) {
+            pull = 1
+            step = .awakened
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    private func ritualButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.headline).padding(.vertical, 16).frame(maxWidth: .infinity)
+        }.buttonStyle(.borderedProminent).tint(tint).foregroundStyle(.black)
+    }
+}
 
 /// The complete playable horizon: one first ability and three evolving branches.
 private struct SkillConstellation: View {

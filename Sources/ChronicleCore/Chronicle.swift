@@ -618,3 +618,32 @@ public struct Game: Codable, Equatable {
     }
 
 }
+
+/// Practice sessions use the same game, but never read or write the player's progress.
+public struct SessionPersistence {
+    public let isPlaytest: Bool
+    private let defaults: UserDefaults
+    private let gameKey = "chronicle.prototype.v1"
+    private let introductionKey = "chronicle.introduction.v4"
+
+    public init(isPlaytest: Bool = false, defaults: UserDefaults = .standard) {
+        self.isPlaytest = isPlaytest
+        self.defaults = defaults
+    }
+    public func loadGame() -> Game {
+        guard !isPlaytest, let data = defaults.data(forKey: gameKey),
+              let game = try? JSONDecoder().decode(Game.self, from: data) else { return Game() }
+        return game
+    }
+    public func loadIntroduction() -> Bool {
+        !isPlaytest && defaults.bool(forKey: introductionKey)
+    }
+    public func save(_ game: Game) {
+        guard !isPlaytest, let data = try? JSONEncoder().encode(game) else { return }
+        defaults.set(data, forKey: gameKey)
+    }
+    public func saveIntroduction(_ complete: Bool) {
+        guard !isPlaytest else { return }
+        defaults.set(complete, forKey: introductionKey)
+    }
+}
